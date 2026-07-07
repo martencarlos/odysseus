@@ -1804,93 +1804,6 @@ body.hamburger-right .hamburger-btn {
     cursor: pointer;
 }
 
-/* ── Desktop sidebar scaling ──
-       Make sidebar text and controls slightly larger on desktop screens
-       where the narrow sidebar looks undersized next to the full chat pane. */
-@media (min-width: 769px) {
-    /* Section headers — taller row, larger title */
-    .section-header-flex {
-        padding: 10px 10px;
-        height: 34px;
-        gap: 8px;
-    }
-    .section-header-flex h4,
-    .section-header-flex .section-title {
-        font-size: 11.5px;
-        font-weight: 500;
-    }
-    .section-header-btn svg {
-        width: 13px;
-        height: 13px;
-    }
-
-    /* List items — more breathing room */
-    .list-item,
-    .models-row {
-        font-size: 14px;
-        padding: 6px 10px;
-        gap: 8px;
-        border-radius: 6px;
-    }
-    .list-item span {
-        font-size: 11px;
-    }
-    .list-item button {
-        font-size: 10px;
-        height: 26px;
-        padding: 0 10px;
-    }
-    .models-row .grow,
-    .models-row select {
-        font-size: 12px;
-    }
-
-    /* Sidebar action buttons (Search, New Chat) */
-    #sidebar-search-btn,
-    #sidebar-new-chat-btn {
-        padding: 10px 10px;
-    }
-    #sidebar-search-btn .grow,
-    #sidebar-new-chat-btn .grow,
-    .sidebar-assistant-entry .grow {
-        font-size: 13px;
-    }
-
-    /* Assistant entry — taller row */
-    .sidebar-assistant-entry {
-        min-height: 34px;
-    }
-
-    /* User bar — larger avatar and name */
-    .user-bar-name {
-        font-size: 11px;
-    }
-    .user-bar-avatar {
-        width: 28px;
-        height: 28px;
-        font-size: 11px;
-    }
-    .user-bar-btn {
-        padding: 8px;
-    }
-    .sidebar-user-bar {
-        padding: 14px 14px;
-        min-height: 54px;
-    }
-
-    /* Larger action icons */
-    .section-icon,
-    .sidebar-action-icon {
-        width: 14px;
-        height: 14px;
-    }
-
-    /* Plus button label — slightly bigger */
-    .list-item-plus-label {
-        font-size: 10.5px;
-    }
-}
-
 /* Domino expand: every time a section goes from .collapsed → open
        (toggleCollapse in section-management.js adds .section-just-expanded
        for ~700ms), the .list-item children cascade in one after another,
@@ -51032,5 +50945,102 @@ body.theme-frosted .modal {
     }
     .compare-pane {
         min-height: 60dvh;
+    }
+}
+
+/* ── Desktop sidebar scaling ──
+   Make sidebar text and controls larger on desktop screens
+   where the narrow sidebar looks undersized next to the full chat pane. */
+@media (min-width: 769px) {
+    /* Section headers — taller row, larger title */
+    .section-header-flex {
+        padding: 11px 12px;
+        height: 36px;
+        gap: 9px;
+    }
+    .section-header-flex h4,
+    .section-header-flex .section-title {
+        font-size: 12px;
+        font-weight: 500;
+    }
+    .section-header-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    /* List items — more breathing room, larger text */
+    .list-item,
+    .models-row {
+        font-size: 15px;
+        padding: 7px 12px;
+        gap: 9px;
+        border-radius: 6px;
+    }
+    .list-item span {
+        font-size: 12px;
+    }
+    .list-item button {
+        font-size: 11px;
+        height: 28px;
+        padding: 0 10px;
+    }
+    .list-item .grow {
+        font-size: 14px;
+    }
+    .models-row .grow,
+    .models-row select {
+        font-size: 13px;
+    }
+
+    /* Sidebar action buttons (Search, New Chat) */
+    #sidebar-search-btn,
+    #sidebar-new-chat-btn {
+        padding: 11px 12px;
+        min-height: 36px;
+    }
+    #sidebar-search-btn .grow,
+    #sidebar-new-chat-btn .grow,
+    .sidebar-assistant-entry .grow {
+        font-size: 14px;
+    }
+
+    /* Assistant entry — taller row */
+    .sidebar-assistant-entry {
+        min-height: 36px;
+    }
+
+    /* User bar — larger avatar and name */
+    .user-bar-name {
+        font-size: 12px;
+    }
+    .user-bar-avatar {
+        width: 30px;
+        height: 30px;
+        font-size: 12px;
+    }
+    .user-bar-btn {
+        padding: 8px;
+    }
+    .sidebar-user-bar {
+        padding: 14px 14px;
+        min-height: 56px;
+    }
+
+    /* Larger action icons */
+    .section-icon,
+    .sidebar-action-icon {
+        width: 15px;
+        height: 15px;
+    }
+
+    /* Plus button label — slightly bigger */
+    .list-item-plus-label {
+        font-size: 11px;
+    }
+
+    /* Section collapse chevron */
+    .section-collapse-chevron {
+        width: 14px;
+        height: 14px;
     }
 }
