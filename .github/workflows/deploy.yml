@@ -6,6 +6,7 @@ on:
 
 jobs:
   deploy:
+    permissions: {}
     runs-on: self-hosted
     steps:
       - name: Deploy
