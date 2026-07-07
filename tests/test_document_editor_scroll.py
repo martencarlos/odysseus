@@ -10,15 +10,18 @@ document.js is browser-coupled and not importable in pytest.
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DOC_JS = (ROOT / "static/js/document.js").read_text(encoding="utf-8")
 STYLE_CSS = (ROOT / "static/style.css").read_text(encoding="utf-8")
 
 
 def test_document_textarea_scrollbar_is_visible():
-    textarea_rule_start = STYLE_CSS.index(".doc-editor-textarea {\n  position: absolute;")
-    textarea_rule_end = STYLE_CSS.index(".doc-editor-textarea::placeholder", textarea_rule_start)
+    textarea_rule_start = STYLE_CSS.index(
+        ".doc-editor-textarea {\n    position: absolute;"
+    )
+    textarea_rule_end = STYLE_CSS.index(
+        ".doc-editor-textarea::placeholder", textarea_rule_start
+    )
     textarea_css = STYLE_CSS[textarea_rule_start:textarea_rule_end]
 
     assert "overflow-y: scroll;" in textarea_css
@@ -36,7 +39,10 @@ def test_line_number_gutter_translates_inner_content():
 
 
 def test_line_number_gutter_accounts_for_wrapped_rows():
-    assert "function _measureLineNumberHeights(textarea, lines, textWidth, style)" in DOC_JS
+    assert (
+        "function _measureLineNumberHeights(textarea, lines, textWidth, style)"
+        in DOC_JS
+    )
     assert "probe = document.createElement('textarea');" in DOC_JS
     assert "probe.wrap = 'soft';" in DOC_JS
     assert "probe.value = line || ' ';" in DOC_JS
