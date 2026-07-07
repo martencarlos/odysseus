@@ -17159,9 +17159,7 @@ mark.doc-find-mark.current {
     font-kerning: none !important;
     text-rendering: geometricPrecision !important;
 }
-.doc-editor-textarea::-webkit-scrollbar {
-    width: 8px;
-}
+.doc-editor-textarea::-webkit-scrollbar { width: 8px; }
 .doc-editor-textarea::-webkit-scrollbar-track {
     background: transparent;
 }
