@@ -557,8 +557,8 @@ def setup_chat_routes(
             sess.model,
             ctx.messages,
             headers=sess.headers,
-            temperature=ctx.preset.temperature,
-            max_tokens=ctx.preset.max_tokens,
+            temperature=ctx.preset.temperature or 0.7,
+            max_tokens=ctx.preset.max_tokens or 0,
             prompt_type=preset_id,
             session_id=session,
         )
@@ -582,8 +582,8 @@ def setup_chat_routes(
             memory_manager,
             memory_vector,
             webhook_manager,
-            character_name=ctx.preset.character_name,
-            owner=ctx.user,
+            character_name=ctx.preset.character_name or "",
+            owner=ctx.user or "",
             allow_background_extraction=not tool_policy.block_all_tool_calls,
         )
 
@@ -1671,10 +1671,10 @@ def setup_chat_routes(
                                     session,
                                     full_response,
                                     _metrics_to_save,
-                                    character_name=ctx.preset.character_name,
+                                    character_name=ctx.preset.character_name or "",
                                     web_sources=web_sources,
                                     rag_sources=ctx.rag_sources,
-                                    research_sources=research_sources,
+                                    research_sources=research_sources or [],
                                     used_memories=ctx.used_memories,
                                     do_research=effective_do_research,
                                     incognito=incognito,
@@ -1694,8 +1694,8 @@ def setup_chat_routes(
                                     webhook_manager,
                                     incognito=incognito,
                                     compare_mode=compare_mode,
-                                    character_name=ctx.preset.character_name,
-                                    owner=_user,
+                                    character_name=ctx.preset.character_name or "",
+                                    owner=_user or "",
                                     allow_background_extraction=not tool_policy.block_all_tool_calls,
                                 )
                             _stream_set(session, status="done")
@@ -1770,8 +1770,8 @@ def setup_chat_routes(
                         sess.model,
                         messages,
                         headers=sess.headers,
-                        temperature=ctx.preset.temperature,
-                        max_tokens=ctx.preset.max_tokens,
+                        temperature=ctx.preset.temperature or 0.3,
+                        max_tokens=ctx.preset.max_tokens or 0,
                         prompt_type=preset_id,
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
@@ -1896,7 +1896,7 @@ def setup_chat_routes(
                                     session,
                                     _response_to_save,
                                     _metrics_to_save,
-                                    character_name=ctx.preset.character_name,
+                                    character_name=ctx.preset.character_name or "",
                                     web_sources=web_sources,
                                     rag_sources=ctx.rag_sources,
                                     used_memories=ctx.used_memories,
@@ -1917,11 +1917,11 @@ def setup_chat_routes(
                                     webhook_manager,
                                     incognito=incognito,
                                     compare_mode=compare_mode,
-                                    character_name=ctx.preset.character_name,
+                                    character_name=ctx.preset.character_name or "",
                                     agent_rounds=_agent_rounds,
                                     agent_tool_calls=_agent_tool_calls,
                                     skills_manager=skills_manager,
-                                    owner=_user,
+                                    owner=_user or "",
                                     extract_skills=user_requested_agent,
                                     allow_background_extraction=not tool_policy.block_all_tool_calls,
                                 )
@@ -2182,8 +2182,8 @@ def setup_chat_routes(
                         from src.research_utils import strip_thinking
 
                         full_response = (
-                            strip_thinking(full_response).strip() or full_response
-                        )
+                            strip_thinking(full_response) or ""
+                        ).strip() or full_response
                         if full_response:
                             for msg in reversed(sess.history):
                                 if (
