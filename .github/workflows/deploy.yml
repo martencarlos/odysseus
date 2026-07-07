@@ -1,0 +1,18 @@
+name: Deploy Odysseus
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Deploy
+        run: |
+          cd /opt/odysseus
+          git fetch origin main
+          git reset --hard origin/main
+          docker compose build odysseus
+          docker compose up -d --no-deps odysseus
+          docker image prune -f
