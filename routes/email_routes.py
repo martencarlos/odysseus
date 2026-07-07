@@ -4033,9 +4033,7 @@ def setup_email_routes():
             safe_name = re.sub(r"[^\w\s\-.]", "_", file.filename or "file").strip()
             token = f"{uuid.uuid4().hex}_{safe_name}"
             filepath = COMPOSE_UPLOADS_DIR / token
-            content = await read_upload_limited(
-                file, EMAIL_COMPOSE_UPLOAD_MAX_BYTES, "Attachment"
-            )
+            content = await read_upload_limited(file, EMAIL_COMPOSE_UPLOAD_MAX_BYTES, "Attachment")
             with open(filepath, "wb") as f:
                 f.write(content)
             return {

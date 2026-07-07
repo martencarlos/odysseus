@@ -194,9 +194,7 @@ def setup_gallery_routes() -> APIRouter:
 
         user = get_current_user(request)
         album_id = form.get("album_id") or None
-        content = await read_upload_limited(
-            file, GALLERY_UPLOAD_MAX_BYTES, "Gallery upload"
-        )
+        content = await read_upload_limited(file, GALLERY_UPLOAD_MAX_BYTES, "Gallery upload")
 
         # Duplicate detection via SHA-256
         file_hash = hashlib.sha256(content).hexdigest()
@@ -297,9 +295,7 @@ def setup_gallery_routes() -> APIRouter:
             if not file or not hasattr(file, "read"):
                 raise HTTPException(400, "No image provided")
 
-            content = await read_upload_limited(
-                file, GALLERY_UPLOAD_MAX_BYTES, "Gallery replacement"
-            )
+            content = await read_upload_limited(file, GALLERY_UPLOAD_MAX_BYTES, "Gallery replacement")
             GALLERY_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
             img_path = _gallery_image_path(img.filename)
             img_path.write_bytes(content)
@@ -425,9 +421,7 @@ def setup_gallery_routes() -> APIRouter:
             raise HTTPException(400, "No image")
         scale = int(form.get("scale", "2"))
 
-        image_bytes = await read_upload_limited(
-            file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload"
-        )
+        image_bytes = await read_upload_limited(file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
         # Find image endpoint
@@ -482,9 +476,7 @@ def setup_gallery_routes() -> APIRouter:
         if not file:
             raise HTTPException(400, "No image")
 
-        image_bytes = await read_upload_limited(
-            file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload"
-        )
+        image_bytes = await read_upload_limited(file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES, "Image upload")
         b64 = base64.b64encode(image_bytes).decode()
 
         db = SessionLocal()
@@ -2133,9 +2125,7 @@ def setup_gallery_routes() -> APIRouter:
                 return {"error": "Vision is disabled — enable it in Settings → Vision"}
             configured = vl_settings.get("vision_model", "")
             try:
-                chat_url, model_name, headers = _resolve_vl_model(
-                    configured, owner=user
-                )
+                chat_url, model_name, headers = _resolve_vl_model(configured, owner=user)
             except ValueError:
                 return {
                     "error": "No vision model configured — set one in Settings → Vision"

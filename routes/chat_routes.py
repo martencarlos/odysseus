@@ -287,9 +287,7 @@ def _is_image_generation_session(sess, owner: str | None = None) -> bool:
     return False
 
 
-def _recover_empty_session_model(
-    sess, session_id: str, owner: str | None = None
-) -> bool:
+def _recover_empty_session_model(sess, session_id: str, owner: str | None = None) -> bool:
     """Re-populate sess.model from the matching endpoint's cached models.
 
     Covers the window between endpoint setup and the first chat send: the
