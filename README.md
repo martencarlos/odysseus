@@ -14,5 +14,3 @@
 </p>
 
 My take on it
-
-test
