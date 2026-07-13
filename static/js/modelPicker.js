@@ -700,13 +700,33 @@ function _initModelPickerDropdown() {
     if (match) await _pick(match);
   });
 
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  function _togglePicker() {
     if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
       _open();
     } else {
       _close();
     }
+  }
+
+  // Mobile browsers can emit a delayed compatibility click after the pointer
+  // event for one tap. If both toggle the picker, it appears to flash open and
+  // immediately close. Handle touch/pen once on pointerup and swallow only its
+  // follow-up click; mouse and keyboard activation continue through `click`.
+  let _ignoreClickUntil = 0;
+  btn.addEventListener('pointerup', (e) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    e.preventDefault();
+    e.stopPropagation();
+    _ignoreClickUntil = Date.now() + 750;
+    _togglePicker();
+  });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (Date.now() < _ignoreClickUntil) {
+      e.preventDefault();
+      return;
+    }
+    _togglePicker();
   });
 
   search.addEventListener('input', () => _populate(search.value));
