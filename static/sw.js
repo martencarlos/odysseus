@@ -1,13 +1,12 @@
 // static/sw.js — Odysseus PWA Service Worker
 // Strategy:
-//   - HTML (navigation): stale-while-revalidate. Instant open from cache,
-//     background refresh so the next open has latest HTML.
-//   - JS/CSS (/static/*.js|.css): network-first, cache fallback for offline.
-//     (So code/style edits show up on a normal reload, no manual cache clear.)
+//   - HTML (navigation): network-first, cache fallback for offline.
+//   - JS/CSS (/static/*.js|.css): network-first with the HTTP cache bypassed,
+//     then service-worker cache fallback for offline use.
 //   - Other static assets (images/fonts/libs): cache-first with bg refresh.
 //   - API / non-GET: never cached.
 // Bump CACHE_NAME whenever the precache list or SW logic changes.
-const CACHE_NAME = 'odysseus-v344';
+const CACHE_NAME = 'odysseus-v345';
 
 // Core shell precached on install so repeat opens are instant without any
 // network wait. Keep this list in sync with the <script type="module"> tags
@@ -94,29 +93,29 @@ self.addEventListener('fetch', (e) => {
   // Never touch API calls or non-GET.
   if (url.pathname.startsWith('/api/') || e.request.method !== 'GET') return;
 
-  // HTML navigation: stale-while-revalidate the app shell — but ONLY for the
-  // SPA root. Other navigations (e.g. a deep-linked /static/*.html page) must
-  // go to the network/static handlers below; otherwise every navigation was
-  // served the app index, replacing the page the user actually asked for.
+  // HTML navigation: fetch the current app shell first so one normal reload is
+  // enough after a deploy. Only use the precached shell when the network fails.
+  // Restrict this to the SPA root; deep-linked static HTML belongs below.
   if (e.request.mode === 'navigate' && url.pathname === '/') {
     e.respondWith(
       caches.open(CACHE_NAME).then(async cache => {
-        const cached = await cache.match('/');
-        const network = fetch(e.request).then(res => {
+        try {
+          const res = await fetch(e.request, { cache: 'no-store' });
           if (res && res.ok) cache.put('/', res.clone());
           return res;
-        }).catch(() => cached);
-        return cached || network;
+        } catch (_) {
+          return cache.match('/');
+        }
       })
     );
     return;
   }
 
-  // JS/CSS: network-first — always try the network so code/style edits show up
-  // on a normal reload; fall back to cache only when offline.
+  // JS/CSS: bypass the browser HTTP cache as well as checking the network
+  // first. This matters for imported ES modules whose URLs are not versioned.
   if (url.pathname.startsWith('/static/') && /\.(js|css)(\?|$)/.test(url.pathname + url.search)) {
     e.respondWith(
-      fetch(e.request).then(res => {
+      fetch(e.request, { cache: 'no-store' }).then(res => {
         if (res && res.ok) {
           const copy = res.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));

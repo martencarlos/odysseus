@@ -478,18 +478,18 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 
 class _RevalidatingStatic(StaticFiles):
-    """Serve static assets normally, but force the browser to REVALIDATE
-    source files (.js/.css/.html) on every load instead of serving a stale
-    copy from disk cache. The app ships raw ES modules with no build step or
-    versioned URLs, so browsers were caching modules across deploys — a code
-    change wouldn't appear without a manual hard-refresh. `no-cache` keeps the
-    cached bytes but requires a conditional request; unchanged files still
-    return a cheap 304 (ETag/Last-Modified are preserved)."""
+    """Prevent stale source assets from surviving frontend deployments.
+
+    Odysseus ships raw ES modules without content-hashed filenames. `no-store`
+    ensures a normal reload retrieves the current module graph instead of a
+    browser-cache copy; the service worker separately maintains offline
+    fallbacks for network failures.
+    """
 
     async def get_response(self, path, scope):
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
-            resp.headers["Cache-Control"] = "no-cache"
+            resp.headers["Cache-Control"] = "no-store"
         return resp
 
 

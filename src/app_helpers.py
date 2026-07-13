@@ -46,7 +46,10 @@ def serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
         raise HTTPException(500, "Internal server error")
     nonce = getattr(request.state, "csp_nonce", "")
     html = html.replace("{{CSP_NONCE}}", nonce)
-    return HTMLResponse(html)
+    # Bundled pages are the entry point for the unbundled ES-module graph. Never
+    # reuse stale HTML after a deploy; the service worker keeps its own offline
+    # fallback and handles network failures explicitly.
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 def inside_base_dir(base_dir: str, path: str) -> bool:
