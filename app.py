@@ -490,6 +490,10 @@ class _RevalidatingStatic(StaticFiles):
         resp = await super().get_response(path, scope)
         if path.endswith((".js", ".css", ".html")):
             resp.headers["Cache-Control"] = "no-store"
+        if path.replace("\\", "/") == "sw.js":
+            # The worker lives under /static for packaging, but controls the app
+            # shell at /. Without this header Chrome restricts it to /static/.
+            resp.headers["Service-Worker-Allowed"] = "/"
         return resp
 
 

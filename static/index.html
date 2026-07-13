@@ -2487,6 +2487,33 @@
 <script type="module" src="/static/app.js?v=20260713mpick2"></script>  <!-- app.js must be LAST -->
 <script type="module" src="/static/js/init.js"></script>
 <script type="module" src="/static/js/a11y.js"></script>
-<script nonce="{{CSP_NONCE}}">if('serviceWorker' in navigator){navigator.serviceWorker.register('/static/sw.js',{updateViaCache:'none'}).catch(()=>{});}</script>
+<script nonce="{{CSP_NONCE}}">
+if ('serviceWorker' in navigator) {
+  (async function migrateServiceWorker() {
+    try {
+      // Older releases registered /static/sw.js with its default /static/
+      // scope. Remove that registration so it cannot keep serving stale source
+      // assets after the root-scoped worker takes over.
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations
+        .filter(registration => new URL(registration.scope).pathname === '/static/')
+        .map(registration => registration.unregister()));
+
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloading) return;
+        reloading = true;
+        window.location.reload();
+      });
+
+      const registration = await navigator.serviceWorker.register('/static/sw.js', {
+        scope: '/',
+        updateViaCache: 'none',
+      });
+      await registration.update();
+    } catch (_) {}
+  })();
+}
+</script>
 </body>
 </html>
