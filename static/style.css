@@ -4213,10 +4213,6 @@ li.task-item.task-done .task-text {
 }
 .model-picker-list .mp-provider-name {
     flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 .model-picker-list .mp-provider-count {
     font-size: 0.85em;
@@ -4272,26 +4268,17 @@ li.task-item.task-done .task-text {
 /* Comfortable touch targets on phones / narrow screens. */
 @media (hover: none) and (pointer: coarse), (max-width: 768px) {
     .model-picker-menu {
-        /* Prevent horizontal overflow: the menu is anchored at its right
-           edge (right:0 relative to the picker-wrap, which sits at the
-           right edge of the chat bar).  cap max-width to the viewport
-           minus a generous inset so the left edge never goes off-screen,
-           even on a 320 px-wide device. */
+        /* Prevent horizontal overflow: cap max-width so the left edge
+           never goes off-screen even on a 320 px-wide device. */
         max-width: calc(100vw - 32px);
         min-width: 240px;
         /* Prevent the upward-opening menu from flying off the top of the
            screen when there are many provider groups. */
         max-height: calc(100dvh - 120px);
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
     }
     .model-picker-list {
-        /* Let the list fill remaining space and scroll independently so the
-           search bar stays pinned at the top. */
-        max-height: none;
-        flex: 1 1 auto;
-        min-height: 0;
+        /* Let the list scroll if it's taller than the available space. */
+        max-height: min(320px, 40dvh);
         overflow-y: auto;
     }
     .model-picker-list .model-switch-item {

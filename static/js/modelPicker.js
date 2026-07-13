@@ -653,13 +653,11 @@ function _initModelPickerDropdown() {
     if (match) await _pick(match);
   });
 
-  let _lastOpened = 0;
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
       // Force-clear any in-progress close animation
       menu.classList.remove('closing', 'hidden');
-      _lastOpened = Date.now();
       _populate('');
       if (window.modelsModule && window.modelsModule.refreshModels) {
         window.modelsModule.refreshModels().then(() => {
@@ -709,13 +707,7 @@ function _initModelPickerDropdown() {
     });
   }
   document.addEventListener('click', (e) => {
-    // Guard: ignore clicks that arrive within 250 ms of the menu opening.
-    // On some browsers a single tap can produce back-to-back click events,
-    // and without this the second event closes the menu immediately.
-    if (Date.now() - _lastOpened < 250) return;
-    // Use closest() so clicks on children of the button (SVG, span) are
-    // treated the same as a direct click on the button itself.
-    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && !e.target.closest('.model-picker-btn')) {
+    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target !== btn) {
       _close();
     }
   });
