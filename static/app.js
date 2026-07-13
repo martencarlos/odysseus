@@ -1794,6 +1794,8 @@ function initializeEventListeners() {
       try { workspaceModule.applyMode(mode); } catch (_) {}
       // Delay tool glow-up for a staggered effect
       setTimeout(() => applyModeToToggles(mode), 500);
+      // Let listeners (e.g. the overflow shell button) react to the mode switch.
+      try { document.dispatchEvent(new CustomEvent('odysseus:mode-changed', { detail: { mode } })); } catch (_) {}
     }
     window.__odysseusSetChatMode = setMode;
     agentBtn.addEventListener('click', () => {
@@ -1924,6 +1926,44 @@ function initializeEventListeners() {
       if (ob) ob.click();
     });
   }
+
+  // ── Shell overflow button (always visible in the "+" menu) ──
+  (function initOverflowBash() {
+    const btn = el('overflow-bash-btn');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      // If we're in chat mode, switch to agent mode first so the
+      // toggle actually takes effect.
+      const st = loadToggleState();
+      if ((st.mode || 'chat') === 'chat' && window.__odysseusSetChatMode) {
+        window.__odysseusSetChatMode('agent');
+      }
+      // Toggle bash via the hidden checkbox (same path as the toolbar button).
+      const chk = el('bash-toggle');
+      if (chk) {
+        chk.checked = !chk.checked;
+        const tBtn = el('bash-toggle-btn');
+        if (tBtn) tBtn.classList.toggle('active', chk.checked);
+        saveToolPref('bash', 'agent', chk.checked);
+        showToolToggleToast('bash', chk.checked);
+        if (chk.checked) _showToolSplash('bash');
+      }
+      syncOverflowBashDot();
+    });
+    // Keep the active dot in sync whenever the underlying toggle changes.
+    window._syncOverflowBashDot = function syncOverflowBashDot() {
+      const chk = el('bash-toggle');
+      btn.classList.toggle('active', !!(chk && chk.checked));
+      // Hide the static overflow item when the toolbar mirror already
+      // represents the button (avoids duplicates).
+      const mirror = document.querySelector('.toolbar-overflow-mirror[data-mirror-of="bash-toggle-btn"]');
+      btn.style.display = (mirror && mirror.style.display !== 'none') ? 'none' : '';
+    };
+    syncOverflowBashDot();
+    // Re-sync after mode switch (bash visibility changes) and toolbar resizes.
+    document.addEventListener('odysseus:mode-changed', syncOverflowBashDot);
+    window.addEventListener('resize', syncOverflowBashDot);
+  })();
 
   // ── RAG toggle (overflow + indicator) ──
   function _syncRagIndicator(active) {
@@ -2193,6 +2233,9 @@ function initializeEventListeners() {
         const btn = el(btnId);
         if (btn) mirror.classList.toggle('active', btn.classList.contains('active'));
       });
+      // Also sync the static overflow shell button (separate from the
+      // dynamic toolbar mirrors).
+      if (window._syncOverflowBashDot) window._syncOverflowBashDot();
       updatePlusDot();
     }
 
