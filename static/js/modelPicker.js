@@ -181,31 +181,34 @@ function _initModelPickerDropdown() {
   const searchRow = menu ? menu.querySelector('.model-picker-search-row') : null;
   const refreshBtn = document.getElementById('model-picker-refresh-btn');
   if (!wrap || !btn || !menu || !search || !listEl) return;
-
   let _closeTimer = null;
+  let _lastOpened = 0;
 
-  function _close() {
-    if (menu.classList.contains('hidden')) return;
-    // Restore scroll button
-    const _scrollBtn = document.getElementById('scroll-bottom-btn');
-    if (_scrollBtn) _scrollBtn.style.display = '';
-    clearTimeout(_closeTimer);
-    menu.classList.add('closing');
-    menu.addEventListener('animationend', function _onDone() {
-      menu.removeEventListener('animationend', _onDone);
+function _close() {
+  if (menu.classList.contains('hidden')) return;
+  // Refuse to close within 300 ms of opening — stops secondary click /
+  // touch / pointer events from immediately shutting the menu.
+  if (Date.now() - _lastOpened < 300) return;
+  // Restore scroll button
+  const _scrollBtn = document.getElementById('scroll-bottom-btn');
+  if (_scrollBtn) _scrollBtn.style.display = '';
+  clearTimeout(_closeTimer);
+  menu.classList.add('closing');
+  menu.addEventListener('animationend', function _onDone() {
+    menu.removeEventListener('animationend', _onDone);
+    menu.classList.remove('closing');
+    menu.classList.add('hidden');
+    search.value = '';
+  }, { once: true });
+  // Fallback if animationend doesn't fire
+  _closeTimer = setTimeout(() => {
+    if (!menu.classList.contains('hidden')) {
       menu.classList.remove('closing');
       menu.classList.add('hidden');
       search.value = '';
-    }, { once: true });
-    // Fallback if animationend doesn't fire
-    _closeTimer = setTimeout(() => {
-      if (!menu.classList.contains('hidden')) {
-        menu.classList.remove('closing');
-        menu.classList.add('hidden');
-        search.value = '';
-      }
-    }, 200);
-  }
+    }
+  }, 200);
+}
 
   function _openPickerShortcut(kind) {
     _close();
@@ -661,6 +664,7 @@ function _initModelPickerDropdown() {
     if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
       // Force-clear any in-progress close animation and its fallback timer
       clearTimeout(_closeTimer);
+      _lastOpened = Date.now();
       menu.classList.remove('closing', 'hidden');
       _populate('');
       if (window.modelsModule && window.modelsModule.refreshModels) {
