@@ -182,11 +182,14 @@ function _initModelPickerDropdown() {
   const refreshBtn = document.getElementById('model-picker-refresh-btn');
   if (!wrap || !btn || !menu || !search || !listEl) return;
 
+  let _closeTimer = null;
+
   function _close() {
     if (menu.classList.contains('hidden')) return;
     // Restore scroll button
     const _scrollBtn = document.getElementById('scroll-bottom-btn');
     if (_scrollBtn) _scrollBtn.style.display = '';
+    clearTimeout(_closeTimer);
     menu.classList.add('closing');
     menu.addEventListener('animationend', function _onDone() {
       menu.removeEventListener('animationend', _onDone);
@@ -195,7 +198,7 @@ function _initModelPickerDropdown() {
       search.value = '';
     }, { once: true });
     // Fallback if animationend doesn't fire
-    setTimeout(() => {
+    _closeTimer = setTimeout(() => {
       if (!menu.classList.contains('hidden')) {
         menu.classList.remove('closing');
         menu.classList.add('hidden');
@@ -656,7 +659,8 @@ function _initModelPickerDropdown() {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
-      // Force-clear any in-progress close animation
+      // Force-clear any in-progress close animation and its fallback timer
+      clearTimeout(_closeTimer);
       menu.classList.remove('closing', 'hidden');
       _populate('');
       if (window.modelsModule && window.modelsModule.refreshModels) {
