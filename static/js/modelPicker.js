@@ -182,6 +182,11 @@ function _initModelPickerDropdown() {
   const searchRow = menu ? menu.querySelector('.model-picker-search-row') : null;
   const refreshBtn = document.getElementById('model-picker-refresh-btn');
   if (!wrap || !btn || !menu || !search || !listEl) return;
+  // Session/app startup can be requested more than once without replacing the
+  // composer DOM. Avoid stacking toggle handlers: a stale handler would see the
+  // menu opened by the first handler and immediately close it again.
+  if (btn._modelPickerInitialized) return;
+  btn._modelPickerInitialized = true;
   let _closeTimer = null;
   let _lastOpened = 0;
   let _dismissMenu = null;
