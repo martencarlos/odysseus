@@ -4272,11 +4272,13 @@ li.task-item.task-done .task-text {
 /* Comfortable touch targets on phones / narrow screens. */
 @media (hover: none) and (pointer: coarse), (max-width: 768px) {
     .model-picker-menu {
-        /* Keep the menu inside the viewport on narrow screens so long model
-           names and provider groups don't overflow or get clipped. */
-        max-width: calc(100vw - 16px);
+        /* Prevent horizontal overflow: the menu is anchored at its right
+           edge (right:0 relative to the picker-wrap, which sits at the
+           right edge of the chat bar).  cap max-width to the viewport
+           minus a generous inset so the left edge never goes off-screen,
+           even on a 320 px-wide device. */
+        max-width: calc(100vw - 32px);
         min-width: 240px;
-        right: 8px;
         /* Prevent the upward-opening menu from flying off the top of the
            screen when there are many provider groups. */
         max-height: calc(100dvh - 120px);
