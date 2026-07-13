@@ -498,16 +498,19 @@ function _initModelPickerDropdown() {
         rest.forEach(_addRow);
       }
     } else {
-      // Large catalog: show provider groups with collapsible sections.
+      // Large catalog: show one folder per configured provider (endpoint).
       const rest = all.filter(m => !shown.has(m.mid));
       const groups = new Map();
       rest.forEach(m => {
-        const slug = _providerSlug(m.mid);
-        if (!groups.has(slug)) groups.set(slug, []);
-        groups.get(slug).push(m);
+        // Group by the configured endpoint name so each provider gets its
+        // own folder — e.g. "OpenAI", "Google", "DeepSeek" — instead of
+        // guessing from the model ID prefix which may be missing.
+        const key = m.epName || _providerDisplayName(_providerSlug(m.mid));
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(m);
       });
       const sorted = [...groups.keys()].sort((a, b) =>
-        _providerDisplayName(a).localeCompare(_providerDisplayName(b)));
+        a.localeCompare(b));
 
       sorted.forEach(provider => {
         const models = groups.get(provider);
@@ -516,7 +519,7 @@ function _initModelPickerDropdown() {
         header.className = 'mp-provider-header';
         header.innerHTML =
           `<svg class="mp-provider-chevron${isCollapsed ? ' collapsed' : ''}" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`
-          + `<span class="mp-provider-name">${_providerDisplayName(provider)}</span>`
+          + `<span class="mp-provider-name">${provider}</span>`
           + `<span class="mp-provider-count">${models.length}</span>`;
         header.addEventListener('click', (e) => {
           e.stopPropagation();

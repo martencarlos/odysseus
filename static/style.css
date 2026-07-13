@@ -3300,12 +3300,15 @@ code {
     container-type: inline-size;
     container-name: chatbar;
 }
-@container chatbar (max-width: 340px) {
+/* Thresholds are tuned so the mode toggle and model picker stay visible on
+   typical mobile viewports (~320-430 px) after accounting for container
+   padding, chat-container padding, and border. */
+@container chatbar (max-width: 240px) {
     .chat-input-right .mode-toggle {
         display: none !important;
     }
 }
-@container chatbar (max-width: 260px) {
+@container chatbar (max-width: 190px) {
     #model-picker-wrap {
         display: none !important;
     }
@@ -4210,6 +4213,10 @@ li.task-item.task-done .task-text {
 }
 .model-picker-list .mp-provider-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .model-picker-list .mp-provider-count {
     font-size: 0.85em;
@@ -4264,6 +4271,27 @@ li.task-item.task-done .task-text {
 }
 /* Comfortable touch targets on phones / narrow screens. */
 @media (hover: none) and (pointer: coarse), (max-width: 768px) {
+    .model-picker-menu {
+        /* Keep the menu inside the viewport on narrow screens so long model
+           names and provider groups don't overflow or get clipped. */
+        max-width: calc(100vw - 16px);
+        min-width: 240px;
+        right: 8px;
+        /* Prevent the upward-opening menu from flying off the top of the
+           screen when there are many provider groups. */
+        max-height: calc(100dvh - 120px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .model-picker-list {
+        /* Let the list fill remaining space and scroll independently so the
+           search bar stays pinned at the top. */
+        max-height: none;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
     .model-picker-list .model-switch-item {
         padding-top: 8px;
         padding-bottom: 8px;

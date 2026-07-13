@@ -1630,25 +1630,9 @@ export async function loadSessions() {
     }
 
     const activeSessions = sessions.filter(s => !s.archived);
-    // "Transient" sessions = the singleton Assistant chat + any task-output
-    // session. Treat them as not-restorable so coming back to the app lands
-    // on the user's last actual conversation, not whichever check-in task
-    // most recently appended a message.
-    const _isTransient = (s) => !!s && (s.folder === 'Assistant' || s.folder === 'Tasks');
-    const _realSessions = activeSessions.filter(s => !_isTransient(s));
     let hashId = window.location.hash.replace('#', '');
     if (/^(document|note|image|email|event|task|skill|research)-/.test(hashId) || /^open=notes&note=/.test(hashId)) {
       hashId = '';
-    }
-    let savedId = Storage.get('lastSessionId');
-    // If the persisted lastSessionId points to a transient session (legacy
-    // state from before the persistence-guard was added), drop it.
-    if (savedId) {
-      const _saved = activeSessions.find(s => s.id === savedId);
-      if (_saved && _isTransient(_saved)) {
-        Storage.remove('lastSessionId');
-        savedId = null;
-      }
     }
     const hasPendingChat = !!_pendingChat;
     let targetId = null;
@@ -1665,28 +1649,11 @@ export async function loadSessions() {
     } else if (currentSessionId) {
       // Session was just created but may not be in the list yet — keep it
       targetId = currentSessionId;
-    } else if (savedId && activeSessions.some(s => s.id === savedId)) {
-      targetId = savedId;
-    } else if (!_skipAutoSelect && _realSessions.length > 0) {
-      // Most-recent NON-transient session — skip Assistant / Tasks so the
-      // auto-firing assistant doesn't become the apparent default chat.
-      targetId = _realSessions[0].id;
-    } else if (!_skipAutoSelect && activeSessions.length > 0) {
-      // Only transient sessions exist (brand-new account) — fall through to
-      // the original behaviour so we don't leave the user with nothing.
-      targetId = activeSessions[0].id;
     }
     _skipAutoSelect = false;
 
-    // Fresh login: prefer a default-model session so a brand-new user lands
-    // ready to chat. CRITICAL: only do this when there's NO session to return
-    // to (no hash / lastSessionId / existing chat resolved into targetId).
-    // Otherwise a fresh page load — which a server restart triggers — would
-    // spin up a new empty default-model chat and shadow the user's last
-    // conversation, making it look like the chat "lost its context" (and the
-    // picker would still show the old model's name from cached state). See
-    // the targetId resolution above (hash → currentSession → lastSessionId →
-    // most-recent).
+    // Always start a fresh chat when opening the root URL (no hash).
+    // Only restore a specific session when navigated to via a URL hash.
     const _isFirstLoad = !sessionStorage.getItem('ody-session-active');
     if (_isFirstLoad) {
       sessionStorage.setItem('ody-session-active', '1');
