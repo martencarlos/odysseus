@@ -5,6 +5,7 @@ import { providerLogo } from './providers.js';
 import uiModule from './ui.js';
 import settingsModule from './settings.js';
 import { sortModelObjects } from './modelSort.js';
+import { bindMenuDismiss } from './escMenuStack.js';
 
 const API_BASE = window.location.origin;
 
@@ -183,32 +184,67 @@ function _initModelPickerDropdown() {
   if (!wrap || !btn || !menu || !search || !listEl) return;
   let _closeTimer = null;
   let _lastOpened = 0;
+  let _dismissMenu = null;
+  let _onAnimationDone = null;
 
-function _close() {
-  if (menu.classList.contains('hidden')) return;
-  // Refuse to close within 300 ms of opening — stops secondary click /
-  // touch / pointer events from immediately shutting the menu.
-  if (Date.now() - _lastOpened < 300) return;
-  // Restore scroll button
-  const _scrollBtn = document.getElementById('scroll-bottom-btn');
-  if (_scrollBtn) _scrollBtn.style.display = '';
-  clearTimeout(_closeTimer);
-  menu.classList.add('closing');
-  menu.addEventListener('animationend', function _onDone() {
-    menu.removeEventListener('animationend', _onDone);
+  function _finishClose() {
+    if (_onAnimationDone) {
+      menu.removeEventListener('animationend', _onAnimationDone);
+      _onAnimationDone = null;
+    }
     menu.classList.remove('closing');
     menu.classList.add('hidden');
     search.value = '';
-  }, { once: true });
-  // Fallback if animationend doesn't fire
-  _closeTimer = setTimeout(() => {
-    if (!menu.classList.contains('hidden')) {
-      menu.classList.remove('closing');
-      menu.classList.add('hidden');
-      search.value = '';
+  }
+
+  function _close() {
+    if (menu.classList.contains('hidden') || menu.classList.contains('closing')) return;
+    // Refuse to close within 300 ms of opening — stops secondary click /
+    // touch / pointer events from immediately shutting the menu.
+    if (Date.now() - _lastOpened < 300) return;
+    // Restore scroll button
+    const _scrollBtn = document.getElementById('scroll-bottom-btn');
+    if (_scrollBtn) _scrollBtn.style.display = '';
+    clearTimeout(_closeTimer);
+    menu.classList.add('closing');
+    if (_dismissMenu) { const d = _dismissMenu; _dismissMenu = null; d(); }
+    _onAnimationDone = function _onDone() { _finishClose(); };
+    menu.addEventListener('animationend', _onAnimationDone, { once: true });
+    // Fallback if animationend doesn't fire
+    _closeTimer = setTimeout(() => {
+      if (!menu.classList.contains('hidden')) {
+        _finishClose();
+      }
+    }, 200);
+  }
+
+  function _open() {
+    // Cancel any in-progress close animation/listener so a stale animationend
+    // or fallback timer can't re-hide the menu right after we reopen it.
+    clearTimeout(_closeTimer);
+    if (_onAnimationDone) {
+      menu.removeEventListener('animationend', _onAnimationDone);
+      _onAnimationDone = null;
     }
-  }, 200);
-}
+    if (_dismissMenu) { _dismissMenu(); _dismissMenu = null; }
+    _lastOpened = Date.now();
+    menu.classList.remove('closing', 'hidden');
+    _populate('');
+    if (window.modelsModule && window.modelsModule.refreshModels) {
+      window.modelsModule.refreshModels().then(() => {
+        if (!menu.classList.contains('hidden')) _populate(search.value || '');
+        updateModelPicker();
+      }).catch(() => {});
+    }
+    if (window.innerWidth >= 768) search.focus();
+    // Hide scroll button so it doesn't overlap
+    const _scrollBtn = document.getElementById('scroll-bottom-btn');
+    if (_scrollBtn) _scrollBtn.style.display = 'none';
+    // Register outside-click / Escape dismissal. Treat the button and its
+    // children as part of the picker so clicking the chevron doesn't count
+    // as an outside click.
+    _dismissMenu = bindMenuDismiss(menu, () => _close(), (ev) => !menu.contains(ev.target) && !btn.contains(ev.target));
+  }
 
   function _openPickerShortcut(kind) {
     _close();
@@ -662,21 +698,7 @@ function _close() {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (menu.classList.contains('hidden') || menu.classList.contains('closing')) {
-      // Force-clear any in-progress close animation and its fallback timer
-      clearTimeout(_closeTimer);
-      _lastOpened = Date.now();
-      menu.classList.remove('closing', 'hidden');
-      _populate('');
-      if (window.modelsModule && window.modelsModule.refreshModels) {
-        window.modelsModule.refreshModels().then(() => {
-          if (!menu.classList.contains('hidden')) _populate(search.value || '');
-          updateModelPicker();
-        }).catch(() => {});
-      }
-      if (window.innerWidth >= 768) search.focus();
-      // Hide scroll button so it doesn't overlap
-      const _scrollBtn = document.getElementById('scroll-bottom-btn');
-      if (_scrollBtn) _scrollBtn.style.display = 'none';
+      _open();
     } else {
       _close();
     }
@@ -714,11 +736,6 @@ function _close() {
       _openPickerShortcut('models');
     });
   }
-  document.addEventListener('click', (e) => {
-    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && e.target !== btn) {
-      _close();
-    }
-  });
 }
 
 /**

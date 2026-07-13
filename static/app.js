@@ -399,11 +399,16 @@ function initializeEventListeners() {
   // controls.
   window.closeAllPopups = function closeAllPopups(except) {
     document.querySelectorAll(
-      '.export-dropdown-menu.open, .overflow-menu.open, .model-picker-menu.open, .doc-overflow-menu.open'
+      '.export-dropdown-menu.open, .overflow-menu.open, .doc-overflow-menu.open'
     ).forEach(m => { if (m !== except) m.classList.remove('open'); });
     document.querySelectorAll(
       '.skill-kebab-menu, .note-reminder-menu, .task-dropdown, .doclib-card-dropdown, .email-card-dropdown, .msg-overflow-menu'
     ).forEach(m => { if (m !== except) m.remove(); });
+    // Model picker uses hidden/closing + escMenuStack rather than .open
+    const modelPickerMenu = document.getElementById('model-picker-menu');
+    if (modelPickerMenu && modelPickerMenu !== except && modelPickerMenu._dismiss && !modelPickerMenu.classList.contains('hidden')) {
+      modelPickerMenu._dismiss();
+    }
   };
   // Window-opening / nav controls (rail buttons, sidebar tool rows + session
   // rows, section headers) count as "other actions" — dismiss popups when one
@@ -714,12 +719,8 @@ function initializeEventListeners() {
         return;
       }
 
-      // Model picker popup — close before opening any modals
-      const modelPickerMenu = document.getElementById('model-picker-menu');
-      if (modelPickerMenu && modelPickerMenu.classList.contains('open')) {
-        modelPickerMenu.classList.remove('open');
-        return;
-      }
+      // Model picker is registered with escMenuStack on open, so the global
+      // Escape arbiter in ui.js dismisses it before we reach the modal layer.
 
       // Close one modal at a time (last in DOM = topmost)
       // Map modal id → sidebar list-item id to clear active state
