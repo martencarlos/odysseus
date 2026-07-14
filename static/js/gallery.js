@@ -4,6 +4,7 @@
 
 import uiModule from './ui.js';
 import { openEditor, closeEditor, isEditorOpen } from './galleryEditor.js';
+import { renderGenerateTab, openGenerateTab } from './galleryGenerate.js';
 import spinnerModule from './spinner.js';
 import { makeWindowDraggable } from './windowDrag.js';
 import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
@@ -1988,6 +1989,10 @@ export function openGallery() {
           <span class="gallery-tab-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
           <span class="gallery-tab-label">Albums</span>
         </button>
+        <button class="gallery-tab" data-tab="generate" id="gallery-generate-tab">
+          <span class="gallery-tab-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></span>
+          <span class="gallery-tab-label">Generate</span>
+        </button>
         <button class="gallery-tab" data-tab="editor" id="gallery-editor-tab">
           <span class="gallery-tab-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span>
           <span class="gallery-tab-label">Edit</span>
@@ -2037,6 +2042,7 @@ export function openGallery() {
         <div class="gallery-detail" id="gallery-detail" style="display:none"></div>
         </div>
         <div class="gallery-albums-container" id="gallery-albums-container" style="display:none;"></div>
+        <div class="gallery-generate-container" id="gallery-generate-container" style="display:none;"></div>
         <div class="gallery-editor-container" id="gallery-editor-container" style="display:none;"></div>
         <div class="gallery-settings-container" id="gallery-settings-container" style="display:none;">
           <div class="admin-card">
@@ -2162,10 +2168,12 @@ export function openGallery() {
       const albumsContainer = document.getElementById('gallery-albums-container');
       const editorContainer = document.getElementById('gallery-editor-container');
       const settingsContainer = document.getElementById('gallery-settings-container');
+      const generateContainer = document.getElementById('gallery-generate-container');
       if (imagesContainer) imagesContainer.style.display = target === 'images' ? '' : 'none';
       if (albumsContainer) albumsContainer.style.display = target === 'albums' ? '' : 'none';
       if (editorContainer) editorContainer.style.display = target === 'editor' ? 'flex' : 'none';
       if (settingsContainer) settingsContainer.style.display = target === 'settings' ? '' : 'none';
+      if (generateContainer) generateContainer.style.display = target === 'generate' ? '' : 'none';
       if (target === 'images') {
         // Keep active edits alive when leaving the Edit tab. The edit
         // session is only torn down by the explicit Edit-tab close.
@@ -2175,6 +2183,10 @@ export function openGallery() {
         // If the editor isn't already holding an image, render a chooser so the
         // tab does something useful instead of opening an empty grey pane.
         if (!isEditorOpen()) _renderEditorLanding();
+      } else if (target === 'generate') {
+        // Lazy-render the Generate tab the first time it's shown, and refresh
+        // the available image models so newly-configured endpoints show up.
+        if (!generateContainer || !generateContainer.childElementCount) renderGenerateTab();
       }
     });
   });
@@ -2825,10 +2837,12 @@ function _showImagesTab() {
   const albumsContainer = document.getElementById('gallery-albums-container');
   const editorContainer = document.getElementById('gallery-editor-container');
   const settingsContainer = document.getElementById('gallery-settings-container');
+  const generateContainer = document.getElementById('gallery-generate-container');
   if (imagesContainer) imagesContainer.style.display = '';
   if (albumsContainer) albumsContainer.style.display = 'none';
   if (editorContainer) editorContainer.style.display = 'none';
   if (settingsContainer) settingsContainer.style.display = 'none';
+  if (generateContainer) generateContainer.style.display = 'none';
 }
 
 export async function openGalleryImage(imageId) {
@@ -2951,6 +2965,7 @@ function _humanSize(bytes) {
 const galleryModule = {
   openGallery,
   openGalleryImage,
+  openGenerateTab,
   closeGallery,
   isGalleryOpen,
 };

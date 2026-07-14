@@ -513,6 +513,175 @@ def setup_gallery_routes() -> APIRouter:
             logger.exception("style_transfer: request failed")
             return {"error": "Style transfer failed"}
 
+    # ---- GET /api/gallery/image-models ----
+    # Returns image-capable models from the caller's configured endpoints, so
+    # the gallery Generate UI can populate its model picker. Includes both
+    # cloud image models (gpt-image-*, dall-e-*) resolved via _resolve_model
+    # and local endpoints (model_type == "image") listing their cached models.
+    @router.get("/api/gallery/image-models")
+    async def gallery_image_models(request: Request) -> Dict[str, Any]:
+        import json as _json
+
+        from src.ai_interaction import _resolve_model
+        from src.settings import load_settings as _load_settings
+
+        user = get_current_user(request)
+        out: list = []
+        seen: set = set()
+
+        def _add(label: str, model_id: str, source: str, kind: str):
+            key = (model_id or "").lower()
+            if not model_id or key in seen:
+                return
+            seen.add(key)
+            out.append({
+                "id": model_id,
+                "label": label or model_id,
+                "model": model_id,
+                "source": source,
+                "kind": kind,  # "cloud" | "local"
+            })
+
+        # Cloud image models known to ship with OpenAI-compatible endpoints.
+        # Try resolving each so we only advertise ones the user actually has
+        # an endpoint for.
+        _settings = _load_settings() if user else {}
+        admin_image_model = (_settings.get("image_model") or "").strip()
+        cloud_candidates = ["gpt-image-1.5", "gpt-image-1", "dall-e-3"]
+        if admin_image_model and admin_image_model not in cloud_candidates:
+            cloud_candidates.insert(0, admin_image_model)
+        for cand in cloud_candidates:
+            try:
+                _resolve_model(cand, owner=user)
+                _add(cand, cand, "cloud", "cloud")
+            except ValueError:
+                continue
+            except Exception:
+                continue
+
+        # Local / self-hosted image endpoints (model_type == "image").
+        db = SessionLocal()
+        try:
+            eps = _visible_image_endpoint_query(db, user).all()
+            for ep in eps:
+                ep_name = (getattr(ep, "name", None) or "").strip() or "Local"
+                cached = getattr(ep, "cached_models", None)
+                model_ids: list = []
+                if cached:
+                    try:
+                        model_ids = _json.loads(cached) or []
+                    except Exception:
+                        model_ids = []
+                if not model_ids:
+                    # Fall back to endpoint name as a single selectable model.
+                    model_ids = [getattr(ep, "name", None) or "local"]
+                for mid in model_ids:
+                    if isinstance(mid, str) and mid:
+                        _add(f"{mid} ({ep_name})", mid, ep_name, "local")
+        finally:
+            db.close()
+
+        return {"models": out}
+
+    # ---- POST /api/gallery/generate ----
+    # Generate a new image from a text prompt and store it in the gallery,
+    # automatically assigned to the "generated" album (created if missing).
+    # Body: { prompt, model?, size?, quality?, style? }
+    #   - model: optional model id (from /api/gallery/image-models). If empty,
+    #            auto-detect the best available image model.
+    #   - size:  "WxH" or one of the aspect-ratio presets (square, portrait,
+    #            landscape, wide). Presets are mapped to concrete sizes per
+    #            model family.
+    #   - quality: low | medium | high | auto
+    #   - style:   optional free-text style hint appended to the prompt
+    @router.post("/api/gallery/generate")
+    async def gallery_generate(request: Request) -> Dict[str, Any]:
+        from src.ai_interaction import do_generate_image
+
+        user = require_privilege(request, "can_generate_images")
+        body = await request.json()
+        prompt = (body.get("prompt") or "").strip()
+        if not prompt:
+            raise HTTPException(400, "Prompt is required")
+
+        model = (body.get("model") or "").strip()
+        size = (body.get("size") or "").strip()
+        quality = (body.get("quality") or "").strip()
+        style = (body.get("style") or "").strip()
+
+        # Aspect-ratio presets → concrete sizes. Cloud models only accept a
+        # fixed set; local diffusion accepts arbitrary WxH. We pick a sensible
+        # default per preset and let do_generate_image clamp for cloud models.
+        _PRESET_SIZES = {
+            "square": "1024x1024",
+            "portrait": "1024x1536",
+            "landscape": "1536x1024",
+            "wide": "1536x1024",
+        }
+        if size in _PRESET_SIZES:
+            size = _PRESET_SIZES[size]
+        elif size and not re.match(r"^\d+x\d+$", size):
+            # Unknown string → let the backend default to square.
+            size = ""
+
+        full_prompt = prompt
+        if style:
+            full_prompt = f"{prompt}. Style: {style}"
+
+        # do_generate_image expects the multi-line content format.
+        lines = [full_prompt]
+        if model:
+            lines.append(model)
+        if size:
+            lines.append(size)
+        if quality:
+            lines.append(quality)
+        content = "\n".join(lines)
+
+        result = await do_generate_image(content, session_id=None, owner=user)
+        if not isinstance(result, dict) or "error" in result:
+            err = result.get("error") if isinstance(result, dict) else "Image generation failed"
+            raise HTTPException(400, err)
+
+        image_id = result.get("image_id") or ""
+        filename = ""
+        if image_id:
+            db = SessionLocal()
+            try:
+                img = db.query(GalleryImage).filter(GalleryImage.id == image_id).first()
+                if img:
+                    # Resolve / create the "generated" album for this owner.
+                    album = db.query(GalleryAlbum).filter(
+                        GalleryAlbum.name == "generated",
+                    )
+                    album = _owner_filter(album, user, GalleryAlbum).first()
+                    if not album:
+                        album = GalleryAlbum(
+                            id=str(uuid.uuid4()),
+                            name="generated",
+                            description="AI-generated images",
+                            owner=user,
+                        )
+                        db.add(album)
+                        db.flush()
+                    img.album_id = album.id
+                    filename = img.filename
+                    db.commit()
+            finally:
+                db.close()
+
+        return {
+            "ok": True,
+            "image_id": image_id,
+            "filename": filename,
+            "url": result.get("image_url") or (f"/api/generated-image/{filename}" if filename else ""),
+            "prompt": prompt,
+            "model": result.get("image_model"),
+            "size": result.get("image_size"),
+            "quality": result.get("image_quality"),
+            "style": style,
+        }
+
     # ---- GET /api/gallery/tags ----
     @router.get("/api/gallery/tags")
     async def gallery_tags(request: Request) -> Dict[str, Any]:
