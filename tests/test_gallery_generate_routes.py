@@ -72,6 +72,39 @@ def test_image_models_owner_scoped(monkeypatch, tmp_path):
     assert "flux-dev" not in ids  # bob's endpoint is hidden from alice
 
 
+def test_image_models_surfaces_llm_endpoint_image_models(monkeypatch, tmp_path):
+    # Image-capable models living on a generic LLM endpoint (e.g. OpenRouter)
+    # must be surfaced, while non-image models on the same endpoint are not.
+    client, sf = _client(monkeypatch, tmp_path)
+    db = sf()
+    try:
+        db.add(ModelEndpoint(
+            id="ep-openrouter", name="OpenRouter", base_url="https://openrouter.ai/api/v1",
+            is_enabled=True, model_type="llm", owner="alice",
+            cached_models='["google/gemini-2.5-flash-image","openai/gpt-4o","black-forest-labs/flux-1-dev","meta-llama/llama-3.1-70b-instruct","openai/gpt-image-1"]',
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(gallery_routes, "get_current_user", lambda r: "alice")
+    monkeypatch.setattr(
+        "src.ai_interaction._resolve_model",
+        lambda spec, owner=None: (_ for _ in ()).throw(ValueError("not found")),
+    )
+
+    res = client.get("/api/gallery/image-models")
+    assert res.status_code == 200
+    ids = {m["model"] for m in res.json()["models"]}
+    # Image-capable models are listed...
+    assert "google/gemini-2.5-flash-image" in ids
+    assert "black-forest-labs/flux-1-dev" in ids
+    assert "openai/gpt-image-1" in ids
+    # ...and plain text models are not.
+    assert "openai/gpt-4o" not in ids
+    assert "meta-llama/llama-3.1-70b-instruct" not in ids
+
+
 def test_image_models_null_user_single_user_mode(monkeypatch, tmp_path):
     # In auth-disabled / single-user mode, owner_filter is a no-op for a null
     # user, so image endpoints are visible. This mirrors the existing gallery

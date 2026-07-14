@@ -169,9 +169,19 @@ export async function refreshModels(forceRefresh = false) {
 function _populateModelSelect(sel) {
   const prev = sel.value || '';
   let html = '<option value="">Auto-detect (best available)</option>';
-  for (const m of _models) {
-    const val = _encodeModelValue(m);
-    html += `<option value="${_escAttr(val)}">${_escHtml(m.label)}</option>`;
+  // Group by kind so cloud / provider / local models are easy to tell apart.
+  const groups = { cloud: [], provider: [], local: [] };
+  for (const m of _models) (groups[m.kind] || groups.provider).push(m);
+  const _GROUP_LABELS = { cloud: 'Cloud', provider: 'Provider', local: 'Local / self-hosted' };
+  for (const kind of ['cloud', 'provider', 'local']) {
+    const items = groups[kind];
+    if (!items || !items.length) continue;
+    html += `<optgroup label="${_escAttr(_GROUP_LABELS[kind])}">`;
+    for (const m of items) {
+      const val = _encodeModelValue(m);
+      html += `<option value="${_escAttr(val)}">${_escHtml(m.label)}</option>`;
+    }
+    html += '</optgroup>';
   }
   sel.innerHTML = html;
   // Preserve the previous selection if still present.
@@ -306,9 +316,13 @@ function _showLoading(loading, statusText) {
   const empty = document.getElementById('gallery-gen-empty');
   const result = document.getElementById('gallery-gen-result');
   const actions = document.getElementById('gallery-gen-result-actions');
+  const img = document.getElementById('gallery-gen-result-img');
   if (loading) {
     if (empty) empty.hidden = true;
     if (result) result.hidden = false;
+    // Clear any previous image so a stale/broken <img> doesn't flash behind
+    // the loading overlay while the new generation is in flight.
+    if (img) img.removeAttribute('src');
     if (loadingEl) loadingEl.hidden = false;
     if (status) status.textContent = statusText || 'Generating…';
     if (actions) actions.hidden = true;

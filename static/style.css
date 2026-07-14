@@ -51065,6 +51065,12 @@ body.theme-frosted .modal {
 /* =========================================================================
    Gallery — Generate tab (text-to-image)
    ========================================================================= */
+/* `hidden` attribute must win over the display:flex/display:block rules
+   below — otherwise an empty <img> + the loading spinner leak onto the page
+   before the user has generated anything. Scope the override to this panel. */
+.gallery-generate [hidden] {
+    display: none !important;
+}
 .gallery-generate {
     display: flex;
     flex-direction: column;
