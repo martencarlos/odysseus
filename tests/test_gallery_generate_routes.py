@@ -72,14 +72,18 @@ def test_image_models_owner_scoped(monkeypatch, tmp_path):
     assert "flux-dev" not in ids  # bob's endpoint is hidden from alice
 
 
-def test_image_models_null_user_fail_closed(monkeypatch, tmp_path):
-    monkeypatch.setenv("AUTH_ENABLED", "true")
+def test_image_models_null_user_single_user_mode(monkeypatch, tmp_path):
+    # In auth-disabled / single-user mode, owner_filter is a no-op for a null
+    # user, so image endpoints are visible. This mirrors the existing gallery
+    # image-generation routes (ai_upscale / style_transfer / inpaint) which
+    # share the same _visible_image_endpoint_query helper.
+    monkeypatch.delenv("AUTH_ENABLED", raising=False)
     client, sf = _client(monkeypatch, tmp_path)
     db = sf()
     try:
         db.add(ModelEndpoint(
             id="ep-x", name="Local", base_url="http://localhost:8001/v1",
-            is_enabled=True, model_type="image", owner="someone-else",
+            is_enabled=True, model_type="image", owner=None,
             cached_models='["sdxl-base"]',
         ))
         db.commit()
@@ -94,7 +98,8 @@ def test_image_models_null_user_fail_closed(monkeypatch, tmp_path):
 
     res = client.get("/api/gallery/image-models")
     assert res.status_code == 200
-    assert res.json()["models"] == []  # null user sees nothing
+    ids = [m["model"] for m in res.json()["models"]]
+    assert "sdxl-base" in ids  # shared endpoint visible in single-user mode
 
 
 def test_generate_creates_generated_album(monkeypatch, tmp_path):
@@ -107,7 +112,7 @@ def test_generate_creates_generated_album(monkeypatch, tmp_path):
 
     # Mock do_generate_image so it writes a GalleryImage row (mirroring the real
     # helper's persistence) and returns the structured result the route expects.
-    def fake_generate(content, session_id=None, owner=None):
+    async def fake_generate(content, session_id=None, owner=None):
         db = sf()
         try:
             fname = f"{uuid.uuid4().hex}.png"
@@ -164,7 +169,7 @@ def test_generate_reuses_existing_generated_album(monkeypatch, tmp_path):
     finally:
         db.close()
 
-    def fake_generate(content, session_id=None, owner=None):
+    async def fake_generate(content, session_id=None, owner=None):
         db2 = sf()
         try:
             fname = f"{uuid.uuid4().hex}.png"
