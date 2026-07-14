@@ -194,11 +194,13 @@ const ADV_KEYS = [
   { key: 'codeBg',             css: '--code-bg',           label: 'Code Bg',          group: 'Code Blocks' },
   { key: 'codeFg',             css: '--code-fg',           label: 'Code Text',        group: 'Code Blocks' },
   { key: 'toggleActive',       css: '--toggle-active',     label: 'Toggle On',        group: 'Controls' },
+  { key: 'successColor',       css: '--green',             label: 'Success / Status', group: 'Status Colors' },
 ];
 
 function computeAdvancedDefaults(colors) {
   const syn = deriveSyntaxColors(colors);
   const red = colors.red || '#e06c75';
+  const [, , bgLightness] = hexToHSL(colors.bg);
   return {
     userBubbleBg: colors.bg,
     aiBubbleBg: colors.panel,
@@ -214,6 +216,9 @@ function computeAdvancedDefaults(colors) {
     codeBg: syn.bg,
     codeFg: syn.fg,
     toggleActive: red,
+    // A darkened green preserves readable contrast on light panels while
+    // retaining the familiar bright success color on dark themes.
+    successColor: bgLightness < 50 ? '#50fa7b' : '#16803c',
   };
 }
 
@@ -1382,6 +1387,7 @@ const _THEME_ZONE_MAP = {
   'adv-codeFg':        'pre code, p code',
   'adv-toggleBg':      '.mode-toggle, .admin-switch',
   'adv-toggleActive':  '.mode-toggle-btn.active, .admin-switch input:checked + .admin-slider',
+  'adv-successColor':  '#cookbook-modal',
   'adv-accentPrimary': '.send-btn, .icon-rail-btn.active',
   'adv-accentError':   '.toast.error',
 };

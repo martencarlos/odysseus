@@ -70,7 +70,7 @@
         // Apply advanced overrides if present
         if (c.advanced) {
           var a = c.advanced;
-          var advMap = {userBubbleBg:'--user-bubble-bg',aiBubbleBg:'--ai-bubble-bg',bubbleBorder:'--bubble-border',sidebarBg:'--sidebar-bg',sectionAccent:'--section-accent',brandColor:'--brand-color',inputBg:'--input-bg',inputBorder:'--input-border',sendBtnBg:'--send-btn-bg',sendBtnHover:'--send-btn-hover',codeBg:'--code-bg',codeFg:'--code-fg',toggleBg:'--toggle-bg',toggleActive:'--toggle-active',accentPrimary:'--accent-primary',accentError:'--accent-error'};
+          var advMap = {userBubbleBg:'--user-bubble-bg',aiBubbleBg:'--ai-bubble-bg',bubbleBorder:'--bubble-border',sidebarBg:'--sidebar-bg',sectionAccent:'--section-accent',brandColor:'--brand-color',inputBg:'--input-bg',inputBorder:'--input-border',sendBtnBg:'--send-btn-bg',sendBtnHover:'--send-btn-hover',codeBg:'--code-bg',codeFg:'--code-fg',toggleBg:'--toggle-bg',toggleActive:'--toggle-active',successColor:'--green',accentPrimary:'--accent-primary',accentError:'--accent-error'};
           for (var k in advMap) { if (a[k]) s.setProperty(advMap[k], a[k]); }
         }
       }
@@ -535,6 +535,12 @@
           <div class="theme-adv-group-label">Controls</div>
           <div class="theme-custom">
             <div class="color-row"><label>Toggle On</label><input type="color" id="adv-toggleActive"><button class="color-reset-btn" data-reset-adv="toggleActive" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
+          </div>
+        </div>
+        <div class="theme-adv-group">
+          <div class="theme-adv-group-label">Status Colors</div>
+          <div class="theme-custom">
+            <div class="color-row"><label>Success / Status</label><input type="color" id="adv-successColor"><button class="color-reset-btn" data-reset-adv="successColor" title="Reset this color" aria-label="Reset color">&#x21BA;</button></div>
           </div>
         </div>
         <div class="theme-adv-group">

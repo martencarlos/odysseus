@@ -5,7 +5,7 @@
 /* ── Variables ──
  *
  * Theme-public variables (override via theme.js or custom themes):
- *   Core:     --bg, --fg, --panel, --border, --red
+ *   Core:     --bg, --fg, --panel, --border, --red, --green
  *   Syntax:   --hl-keyword, --hl-string, --hl-comment, --hl-function,
  *             --hl-number, --hl-builtin, --hl-variable, --hl-params,
  *             --hl-bg, --hl-fg
