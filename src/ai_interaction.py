@@ -898,6 +898,7 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     import os
     from pathlib import Path
     from src.url_safety import check_outbound_url
+    from src.llm_core import _host_match
 
     lines = content.strip().split("\n")
     prompt = lines[0].strip() if lines else ""
@@ -921,7 +922,12 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     if quality == "medium" and _settings.get("image_quality"):
         quality = _settings["image_quality"]
 
-    # Auto-detect best available image model if still not set
+    # Auto-detect best available image model if still not set. Preference
+    # order: known-good cloud image models the user has an endpoint for,
+    # then any discovered image-capable model (local diffusion endpoints,
+    # OpenRouter's authoritative image catalog, name-matched provider
+    # models) — the same discovery used by the Generate tab's model picker,
+    # so auto-detect never picks a model the UI wouldn't also offer.
     if not model_spec:
         for candidate in ("gpt-image-1.5", "gpt-image-1", "dall-e-3"):
             try:
@@ -930,38 +936,18 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                 break
             except ValueError:
                 continue
-        # Fallback: find any locally registered image-type endpoint
+        # Fallback: same discovery the Generate tab's model picker uses (local
+        # diffusion endpoints, OpenRouter's authoritative image catalog,
+        # name-matched provider models). Prefer a local endpoint's model over
+        # a provider one when both are available, since it's usually free.
         if not model_spec:
             try:
-                from src.database import SessionLocal, ModelEndpoint
-                from src.auth_helpers import owner_filter
-                import httpx as _req
-                _idb = SessionLocal()
-                try:
-                    _img_q = _idb.query(ModelEndpoint).filter(
-                        ModelEndpoint.is_enabled == True,
-                        ModelEndpoint.model_type == "image",
-                    )
-                    if owner:
-                        _img_q = owner_filter(_img_q, ModelEndpoint, owner)
-                    _img_eps = _img_q.all()
-                    for _iep in _img_eps:
-                        _ibase = _iep.base_url.rstrip("/")
-                        if not _ibase.endswith("/v1"):
-                            _ibase += "/v1"
-                        try:
-                            _r = _req.get(_ibase + "/models", timeout=3)
-                            _r.raise_for_status()
-                            _data = _r.json()
-                            _ditems = _data if isinstance(_data, list) else (_data.get("data") or [])
-                            _mids = [m.get("id") for m in _ditems if isinstance(m, dict) and m.get("id")]
-                            if _mids:
-                                model_spec = _mids[0]
-                                break
-                        except Exception:
-                            continue
-                finally:
-                    _idb.close()
+                from src.image_models import discover_image_models
+                _discovered = await asyncio.to_thread(discover_image_models, owner)
+                _local = [m for m in _discovered if m.get("kind") == "local"]
+                _pick = (_local or _discovered)
+                if _pick:
+                    model_spec = _pick[0]["model"]
             except Exception:
                 pass
         if not model_spec:
@@ -977,13 +963,21 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     # Detect if this is a GPT image model vs DALL-E vs local diffusion
     is_gpt_image = "gpt-image" in model_id.lower()
     is_dalle = "dall-e" in model_id.lower()
-    is_local_diffusion = not is_gpt_image and not is_dalle
+    is_openrouter = _host_match(url, "openrouter.ai")
+    is_local_diffusion = not is_gpt_image and not is_dalle and not is_openrouter
 
-    # Build the images endpoint URL from the chat completions URL
+    # Build the images endpoint URL from the chat completions URL. OpenRouter's
+    # image-generation API lives at POST /api/v1/images (not the OpenAI-shaped
+    # /images/generations) — using the wrong path 404s for every OpenRouter
+    # image model, which is why most of them appeared to "error out".
     base_url = url.replace("/chat/completions", "").replace("/v1/messages", "").rstrip("/")
-    images_url = base_url + "/images/generations"
+    if is_openrouter:
+        images_url = base_url + "/images"
+    else:
+        images_url = base_url + "/images/generations"
 
-    # Validate size for cloud image models (local diffusion accepts any WxH)
+    # Validate size for cloud image models (local diffusion + OpenRouter accept
+    # arbitrary WxH / aspect ratios).
     valid_gpt_sizes = {"1024x1024", "1024x1536", "1536x1024", "auto"}
     valid_dalle3_sizes = {"1024x1024", "1024x1792", "1792x1024"}
     if is_gpt_image and size not in valid_gpt_sizes:
@@ -998,8 +992,8 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
         "size": size,
     }
 
-    # GPT image models and local diffusion support quality; DALL-E does not
-    if is_gpt_image or is_local_diffusion:
+    # GPT image models, OpenRouter, and local diffusion support quality; DALL-E does not
+    if is_gpt_image or is_local_diffusion or is_openrouter:
         if quality in ("low", "medium", "high", "auto"):
             payload["quality"] = quality
         else:

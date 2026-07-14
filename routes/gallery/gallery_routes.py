@@ -513,34 +513,6 @@ def setup_gallery_routes() -> APIRouter:
             logger.exception("style_transfer: request failed")
             return {"error": "Style transfer failed"}
 
-    # Image-capable model name patterns. Used to surface image-generation
-    # models that live on generic LLM endpoints (OpenRouter, Gemini-compatible
-    # proxies, etc.) in the Generate tab's model picker.
-    _IMAGE_NAME_PATTERNS = (
-        # OpenAI / ChatGPT image models
-        "gpt-image", "dall-e", "chatgpt-image",
-        # Google Gemini image-generation variants
-        "gemini-2.0-flash-preview-image", "gemini-2.5-flash-image",
-        "gemini-2.0-flash-image", "gemini-image",
-        # Diffusion model families (OpenRouter / local / hosted)
-        "flux", "sdxl", "stable-diffusion", "stable_diffusion",
-        "sd-", "sd1-", "sd2-", "sd3-", "sd3.",
-        "playground-v", "playground-v2", "playground-v3",
-        "kolors", "ideogram", "recraft", "seeds-",
-        "leonardo", "dreamshaper", "realvis", "juggernaut",
-        "pixart", "auraflow", "ssd-",
-    )
-
-    def _looks_like_image_model(model_id: str) -> bool:
-        if not model_id:
-            return False
-        low = model_id.lower()
-        # Explicit "image" tag in the name (e.g. google/gemini-2.5-flash-image,
-        # openai/gpt-image-1, ...-image-generation).
-        if "image" in low or "-img" in low or "_img" in low:
-            return True
-        return any(low.startswith(p) or p in low for p in _IMAGE_NAME_PATTERNS)
-
     # ---- GET /api/gallery/image-models ----
     # Returns image-capable models the caller can use to generate images, so
     # the gallery Generate UI can populate its model picker. Sources:
@@ -548,13 +520,15 @@ def setup_gallery_routes() -> APIRouter:
     #      configured endpoint for this user.
     #   2. Every model on a model_type == "image" endpoint (local / self-hosted
     #      diffusion servers — all their models are image-capable).
-    #   3. Image-capable models on any other enabled endpoint (OpenRouter,
-    #      Gemini-compatible proxies, etc.) matched by name pattern.
+    #   3. OpenRouter's authoritative image-model catalog (queried live) for
+    #      any configured OpenRouter endpoint — this is exact, unlike guessing
+    #      from model names, so the picker never lists models that 404.
+    #   4. Image-capable models on any other enabled endpoint (Gemini-
+    #      compatible proxies, etc.) matched by name pattern as a fallback.
     @router.get("/api/gallery/image-models")
     async def gallery_image_models(request: Request) -> Dict[str, Any]:
-        import json as _json
-
         from src.ai_interaction import _resolve_model
+        from src.image_models import discover_image_models
         from src.settings import load_settings as _load_settings
 
         user = get_current_user(request)
@@ -590,44 +564,11 @@ def setup_gallery_routes() -> APIRouter:
             except Exception:
                 continue
 
-        # 2) + 3) Scan every enabled endpoint the caller can see.
-        db = SessionLocal()
-        try:
-            q = db.query(ModelEndpoint).filter(
-                ModelEndpoint.is_enabled == True,  # noqa: E712
-            )
-            q = owner_filter(q, ModelEndpoint, user)
-            eps = q.all()
-            for ep in eps:
-                ep_name = (getattr(ep, "name", None) or "").strip() or "Local"
-                ep_type = (getattr(ep, "model_type", None) or "llm").strip()
-                cached = getattr(ep, "cached_models", None)
-                model_ids: list = []
-                if cached:
-                    try:
-                        parsed = _json.loads(cached)
-                        if isinstance(parsed, list):
-                            model_ids = [m for m in parsed if isinstance(m, str)]
-                        elif isinstance(parsed, str):
-                            model_ids = [m.strip() for m in parsed.split(",") if m.strip()]
-                    except Exception:
-                        model_ids = []
-                # Image-type endpoints expose only image models, so include
-                # everything they list. Other endpoints: filter by name pattern.
-                is_image_endpoint = ep_type == "image"
-                if is_image_endpoint and not model_ids:
-                    # No cached models yet — expose the endpoint itself as a
-                    # selectable target so the user isn't stuck.
-                    model_ids = [ep_name]
-                for mid in model_ids:
-                    if not isinstance(mid, str) or not mid.strip():
-                        continue
-                    mid = mid.strip()
-                    if is_image_endpoint or _looks_like_image_model(mid):
-                        kind = "local" if is_image_endpoint else "provider"
-                        _add(f"{mid} ({ep_name})", mid, ep_name, kind)
-        finally:
-            db.close()
+        # 2) + 3) + 4) Scan every enabled endpoint the caller can see. Pass
+        # this module's SessionLocal explicitly so tests that monkeypatch it
+        # (to point at a test database) are honored here too.
+        for m in discover_image_models(owner=user, session_factory=SessionLocal):
+            _add(m["label"], m["model"], m["source"], m["kind"])
 
         return {"models": out}
 

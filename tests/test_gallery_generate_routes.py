@@ -92,6 +92,13 @@ def test_image_models_surfaces_llm_endpoint_image_models(monkeypatch, tmp_path):
         "src.ai_interaction._resolve_model",
         lambda spec, owner=None: (_ for _ in ()).throw(ValueError("not found")),
     )
+    # No live network access in tests — force the OpenRouter catalog fetch to
+    # "fail" so discovery falls back to name-pattern matching on this
+    # endpoint's cached_models, same as any other generic LLM endpoint.
+    monkeypatch.setattr(
+        "src.image_models._fetch_openrouter_image_model_ids",
+        lambda api_key: None,
+    )
 
     res = client.get("/api/gallery/image-models")
     assert res.status_code == 200
@@ -103,6 +110,43 @@ def test_image_models_surfaces_llm_endpoint_image_models(monkeypatch, tmp_path):
     # ...and plain text models are not.
     assert "openai/gpt-4o" not in ids
     assert "meta-llama/llama-3.1-70b-instruct" not in ids
+
+
+def test_image_models_uses_openrouter_authoritative_catalog(monkeypatch, tmp_path):
+    # When the live OpenRouter image-model catalog is available, use it
+    # instead of name-pattern guessing — it's exact, so a model that doesn't
+    # match our patterns (but IS in the catalog) should still show up, and a
+    # model that matches our patterns but ISN'T in the catalog should not.
+    client, sf = _client(monkeypatch, tmp_path)
+    db = sf()
+    try:
+        db.add(ModelEndpoint(
+            id="ep-openrouter", name="OpenRouter", base_url="https://openrouter.ai/api/v1",
+            is_enabled=True, model_type="llm", owner="alice",
+            cached_models='["some/totally-unguessable-name","black-forest-labs/flux-1-dev"]',
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(gallery_routes, "get_current_user", lambda r: "alice")
+    monkeypatch.setattr(
+        "src.ai_interaction._resolve_model",
+        lambda spec, owner=None: (_ for _ in ()).throw(ValueError("not found")),
+    )
+    monkeypatch.setattr(
+        "src.image_models._fetch_openrouter_image_model_ids",
+        lambda api_key: ["some/totally-unguessable-name"],
+    )
+
+    res = client.get("/api/gallery/image-models")
+    assert res.status_code == 200
+    ids = {m["model"] for m in res.json()["models"]}
+    # Not name-matchable, but present in the live catalog — must be listed.
+    assert "some/totally-unguessable-name" in ids
+    # Name-matchable, but NOT in the live catalog — must be excluded (the
+    # catalog is authoritative once it's available).
+    assert "black-forest-labs/flux-1-dev" not in ids
 
 
 def test_image_models_null_user_single_user_mode(monkeypatch, tmp_path):

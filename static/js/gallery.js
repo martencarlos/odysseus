@@ -23,7 +23,17 @@ window.addEventListener('gallery-refresh', (e) => {
     const sortSel = document.getElementById('gallery-sort');
     if (sortSel) sortSel.value = 'recent';
   }
-  if (_open) _fetchLibrary(false);
+  if (!_open) return;
+  _fetchLibrary(false);
+  // Albums (counts + covers, including the auto-created "generated" album)
+  // are cached separately from the Photos grid — refetch them too, and
+  // repaint the Albums tab immediately if it's the one currently showing.
+  _fetchAlbums().then(() => {
+    const albumsContainer = document.getElementById('gallery-albums-container');
+    if (albumsContainer && albumsContainer.style.display !== 'none') {
+      _renderAlbumsGrid();
+    }
+  });
 });
 let _items = [];
 let _total = 0;

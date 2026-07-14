@@ -51100,6 +51100,14 @@ body.theme-frosted .modal {
     opacity: 0.6;
     font-size: 10px;
 }
+/* Label + "(optional)" hint side-by-side instead of stacking — .gallery-gen-label
+   is a column flex container (label above the field), so the hint needs its
+   own row wrapper to sit next to the label text instead of below it. */
+.gallery-gen-label-row {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
 .gallery-gen-textarea {
     width: 100%;
     box-sizing: border-box;
@@ -51258,6 +51266,11 @@ body.theme-frosted .modal {
 .gallery-gen-discard:hover {
     background: color-mix(in srgb, var(--accent-error, var(--red)) 18%, transparent);
     border-color: var(--accent-error, var(--red));
+}
+.gallery-gen-result-hint {
+    font-size: 10px;
+    opacity: 0.5;
+    text-align: center;
 }
 
 @media (max-width: 600px) {

@@ -4,8 +4,8 @@
  * Lives on the "Generate" tab. Lets the user pick a prompt, an image-capable
  * model (or auto-detect), an aspect ratio, a quality, and an optional style
  * hint, then generate an image that is stored in the gallery under the
- * "generated" album. The result can be kept, copied, opened in the editor,
- * or discarded.
+ * "generated" album. Images are kept by default — the user only needs to
+ * click Discard if they don't want it. Copy and Edit are also offered.
  */
 
 import uiModule from './ui.js';
@@ -14,11 +14,11 @@ import { openEditor } from './galleryEditor.js';
 const API_BASE = window.location.origin;
 
 // Cached model list (refreshed on tab open). Each item:
-//   { id, label, model, source, kind: 'cloud' | 'local' }
+//   { id, label, model, source, kind: 'cloud' | 'local' | 'provider' }
 let _models = [];
 let _modelsLoaded = false;
 
-// Last generation result retained for the action bar (keep/copy/edit/discard).
+// Last generation result retained for the action bar (copy/edit/discard).
 let _lastResult = null;
 
 const ASPECT_PRESETS = [
@@ -40,6 +40,38 @@ const STYLE_CHIPS = [
   'watercolor', 'anime', '3D render', 'minimalist', 'pixel art',
 ];
 
+// Last-used settings persist across sessions (model, aspect ratio, quality,
+// style) so the form doesn't reset to defaults every time the tab reopens.
+const PREFS_KEY = 'odysseus-gallery-generate-prefs';
+
+function _loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function _savePrefs(prefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (_) {}
+}
+
+function _saveCurrentPrefs() {
+  const modelSel = document.getElementById('gallery-gen-model');
+  const aspectSel = document.getElementById('gallery-gen-aspect');
+  const qualitySel = document.getElementById('gallery-gen-quality');
+  const styleEl = document.getElementById('gallery-gen-style');
+  _savePrefs({
+    model: modelSel ? modelSel.value : '',
+    aspect: aspectSel ? aspectSel.value : '',
+    quality: qualitySel ? qualitySel.value : '',
+    style: styleEl ? styleEl.value : '',
+  });
+}
+
 /**
  * Render the Generate tab into #gallery-generate-container. Called once when
  * the gallery modal mounts (the container is created in gallery.js).
@@ -47,13 +79,14 @@ const STYLE_CHIPS = [
 export function renderGenerateTab() {
   const container = document.getElementById('gallery-generate-container');
   if (!container) return;
+  const prefs = _loadPrefs();
   container.innerHTML = `
     <div class="gallery-generate">
       <div class="gallery-generate-form">
         <label class="gallery-gen-label">
           Prompt
           <textarea id="gallery-gen-prompt" class="gallery-gen-textarea" rows="3"
-            placeholder="Describe the image you want to generate..."></textarea>
+            placeholder="Describe the image you want to generate... (Ctrl+Enter to generate)"></textarea>
         </label>
 
         <div class="gallery-gen-row">
@@ -66,7 +99,7 @@ export function renderGenerateTab() {
           <label class="gallery-gen-label gallery-gen-field">
             Aspect ratio
             <select id="gallery-gen-aspect" class="gallery-gen-select">
-              ${ASPECT_PRESETS.map(p => `<option value="${p.value}">${p.label}</option>`).join('')}
+              ${ASPECT_PRESETS.map(p => `<option value="${p.value}"${prefs.aspect === p.value ? ' selected' : ''}>${p.label}</option>`).join('')}
             </select>
           </label>
         </div>
@@ -75,13 +108,14 @@ export function renderGenerateTab() {
           <label class="gallery-gen-label gallery-gen-field">
             Quality
             <select id="gallery-gen-quality" class="gallery-gen-select">
-              ${QUALITY_OPTIONS.map(q => `<option value="${q.value}">${q.label}</option>`).join('')}
+              ${QUALITY_OPTIONS.map(q => `<option value="${q.value}"${prefs.quality === q.value ? ' selected' : ''}>${q.label}</option>`).join('')}
             </select>
           </label>
-          <label class="gallery-gen-label gallery-gen-field">
-            Style <span class="gallery-gen-hint">(optional)</span>
+          <label class="gallery-gen-label gallery-gen-field gallery-gen-style-field">
+            <span class="gallery-gen-label-row">Style <span class="gallery-gen-hint">(optional)</span></span>
             <input type="text" id="gallery-gen-style" class="gallery-gen-input"
-              placeholder="e.g. cinematic, watercolor..." list="gallery-gen-style-list" />
+              placeholder="e.g. cinematic, watercolor..." list="gallery-gen-style-list"
+              value="${_escAttr(prefs.style || '')}" />
             <datalist id="gallery-gen-style-list">
               ${STYLE_CHIPS.map(s => `<option value="${s}"></option>`).join('')}
             </datalist>
@@ -91,14 +125,14 @@ export function renderGenerateTab() {
         <div class="gallery-gen-actions">
           <button class="gallery-select-btn gallery-gen-generate" id="gallery-gen-generate">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-            Generate
+            <span class="gallery-gen-generate-label">Generate</span>
           </button>
         </div>
       </div>
 
       <div class="gallery-gen-result" id="gallery-gen-result" hidden>
         <div class="gallery-gen-result-image-wrap">
-          <img id="gallery-gen-result-img" alt="Generated image" />
+          <img id="gallery-gen-result-img" alt="" hidden />
           <div class="gallery-gen-result-loading" id="gallery-gen-result-loading" hidden>
             <div class="gallery-gen-spinner"></div>
             <div class="gallery-gen-result-status" id="gallery-gen-result-status">Generating…</div>
@@ -106,10 +140,6 @@ export function renderGenerateTab() {
         </div>
         <div class="gallery-gen-result-meta" id="gallery-gen-result-meta"></div>
         <div class="gallery-gen-result-actions" id="gallery-gen-result-actions" hidden>
-          <button class="gallery-select-btn" id="gallery-gen-keep" title="Keep the image in your gallery">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>
-            Keep
-          </button>
           <button class="gallery-select-btn" id="gallery-gen-copy" title="Copy image to clipboard">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
@@ -123,6 +153,7 @@ export function renderGenerateTab() {
             Discard
           </button>
         </div>
+        <div class="gallery-gen-result-hint" id="gallery-gen-result-hint" hidden>Kept in your gallery — click Discard to remove it.</div>
       </div>
 
       <div class="gallery-gen-empty" id="gallery-gen-empty">
@@ -132,8 +163,14 @@ export function renderGenerateTab() {
     </div>
   `;
   _wireForm();
-  // Populate the model picker asynchronously.
-  refreshModels();
+  // Populate the model picker asynchronously, then restore the last-used
+  // model selection once options exist.
+  refreshModels().then(() => {
+    const modelSel = document.getElementById('gallery-gen-model');
+    if (modelSel && prefs.model && Array.from(modelSel.options).some(o => o.value === prefs.model)) {
+      modelSel.value = prefs.model;
+    }
+  });
 }
 
 /**
@@ -217,17 +254,24 @@ function _wireForm() {
       }
     });
   }
-  const keepBtn = document.getElementById('gallery-gen-keep');
+  // Persist model / aspect / quality / style as soon as they change so a
+  // page reload or gallery reopen picks up the last-used settings.
+  ['gallery-gen-model', 'gallery-gen-aspect', 'gallery-gen-quality'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', _saveCurrentPrefs);
+  });
+  document.getElementById('gallery-gen-style')?.addEventListener('input', _saveCurrentPrefs);
+
   const copyBtn = document.getElementById('gallery-gen-copy');
   const editBtn = document.getElementById('gallery-gen-edit');
   const discardBtn = document.getElementById('gallery-gen-discard');
-  keepBtn?.addEventListener('click', () => _onKeep());
   copyBtn?.addEventListener('click', () => _onCopy());
   editBtn?.addEventListener('click', () => _onEdit());
   discardBtn?.addEventListener('click', () => _onDiscard());
 }
 
 async function _onGenerate() {
+  const genBtn = document.getElementById('gallery-gen-generate');
+  if (genBtn && genBtn.disabled) return; // already generating
   const promptEl = document.getElementById('gallery-gen-prompt');
   const prompt = (promptEl?.value || '').trim();
   if (!prompt) {
@@ -249,8 +293,8 @@ async function _onGenerate() {
   const quality = qualitySel ? qualitySel.value : 'auto';
   const style = (styleEl?.value || '').trim();
 
-  _showLoading(true, 'Generating…');
-  _setActionsEnabled(false);
+  _saveCurrentPrefs();
+  _setGenerating(true);
 
   try {
     const res = await fetch(`${API_BASE}/api/gallery/generate`, {
@@ -269,7 +313,22 @@ async function _onGenerate() {
     _renderResult(data);
   } catch (e) {
     _showError(String(e && e.message || e));
+  } finally {
+    _setGenerating(false);
   }
+}
+
+// Toggle the "in flight" UI state: disable the Generate button (with a
+// spinner-ish label swap) and show the loading overlay. Kept separate from
+// _showLoading so the button state survives independently of the result
+// panel's visibility.
+function _setGenerating(active) {
+  const genBtn = document.getElementById('gallery-gen-generate');
+  const label = document.getElementById('gallery-gen-generate-label');
+  if (genBtn) genBtn.disabled = active;
+  if (label) label.textContent = active ? 'Generating…' : 'Generate';
+  _showLoading(active);
+  if (active) _setActionsEnabled(false);
 }
 
 function _renderResult(data) {
@@ -278,16 +337,20 @@ function _renderResult(data) {
   const img = document.getElementById('gallery-gen-result-img');
   const meta = document.getElementById('gallery-gen-result-meta');
   const actions = document.getElementById('gallery-gen-result-actions');
-  const loading = document.getElementById('gallery-gen-result-loading');
-  const status = document.getElementById('gallery-gen-result-status');
+  const hint = document.getElementById('gallery-gen-result-hint');
   if (empty) empty.hidden = true;
   if (result) result.hidden = false;
-  if (loading) loading.hidden = true;
   if (actions) actions.hidden = false;
+  if (hint) hint.hidden = false;
 
   if (img && data.url) {
     // Cache-bust: the URL is content-addressed but a fresh result with the
-    // same filename (rare) should still repaint.
+    // same filename (rare) should still repaint. Only reveal the <img> once
+    // it has actually finished loading, so a slow/failed fetch never shows
+    // the browser's broken-image icon.
+    img.hidden = true;
+    img.onload = () => { img.hidden = false; };
+    img.onerror = () => { img.hidden = true; };
     img.src = data.url + (data.url.includes('?') ? '&' : '?') + '_t=' + Date.now();
   }
   if (meta) {
@@ -310,45 +373,41 @@ function _showError(msg) {
   uiModule.showError ? uiModule.showError(msg) : uiModule.showToast(msg);
 }
 
-function _showLoading(loading, statusText) {
+function _showLoading(loading) {
   const loadingEl = document.getElementById('gallery-gen-result-loading');
   const status = document.getElementById('gallery-gen-result-status');
   const empty = document.getElementById('gallery-gen-empty');
   const result = document.getElementById('gallery-gen-result');
   const actions = document.getElementById('gallery-gen-result-actions');
+  const hint = document.getElementById('gallery-gen-result-hint');
   const img = document.getElementById('gallery-gen-result-img');
   if (loading) {
     if (empty) empty.hidden = true;
     if (result) result.hidden = false;
-    // Clear any previous image so a stale/broken <img> doesn't flash behind
-    // the loading overlay while the new generation is in flight.
-    if (img) img.removeAttribute('src');
+    // Hide any previous image (and cancel its handlers) so a stale/broken
+    // <img> can't flash behind the loading overlay while the new generation
+    // is in flight.
+    if (img) {
+      img.hidden = true;
+      img.onload = null;
+      img.onerror = null;
+      img.removeAttribute('src');
+    }
     if (loadingEl) loadingEl.hidden = false;
-    if (status) status.textContent = statusText || 'Generating…';
+    if (status) status.textContent = 'Generating…';
     if (actions) actions.hidden = true;
+    if (hint) hint.hidden = true;
   } else {
     if (loadingEl) loadingEl.hidden = true;
   }
 }
 
 function _setActionsEnabled(enabled) {
-  ['gallery-gen-keep', 'gallery-gen-copy', 'gallery-gen-edit', 'gallery-gen-discard']
+  ['gallery-gen-copy', 'gallery-gen-edit', 'gallery-gen-discard']
     .forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = !enabled;
     });
-}
-
-// Keep: image is already saved in the gallery + generated album. This just
-// clears the result panel and resets the form for the next generation.
-function _onKeep() {
-  _resetResult();
-  const promptEl = document.getElementById('gallery-gen-prompt');
-  if (promptEl) {
-    promptEl.value = '';
-    promptEl.focus();
-  }
-  uiModule.showToast('Kept in gallery');
 }
 
 async function _onCopy() {
@@ -423,11 +482,23 @@ function _resetResult() {
   const img = document.getElementById('gallery-gen-result-img');
   const meta = document.getElementById('gallery-gen-result-meta');
   const actions = document.getElementById('gallery-gen-result-actions');
+  const hint = document.getElementById('gallery-gen-result-hint');
   if (result) result.hidden = true;
   if (empty) empty.hidden = false;
-  if (img) img.src = '';
+  if (img) {
+    img.hidden = true;
+    img.onload = null;
+    img.onerror = null;
+    img.removeAttribute('src');
+  }
   if (meta) meta.innerHTML = '';
   if (actions) actions.hidden = true;
+  if (hint) hint.hidden = true;
+  const promptEl = document.getElementById('gallery-gen-prompt');
+  if (promptEl) {
+    promptEl.value = '';
+    promptEl.focus();
+  }
 }
 
 /**
