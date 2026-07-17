@@ -68,25 +68,46 @@ def _save_tidy_state(memory_manager, owner: Optional[str], fingerprint: str) -> 
     except OSError as e:
         logger.warning(f"Could not persist tidy fingerprint: {e}")
 
-EXTRACT_SYSTEM_PROMPT = (
-    "You are a memory extraction assistant. Analyze the conversation and extract ONLY "
-    "durable personal facts about the user that would be useful across many future conversations.\n\n"
-    "Good examples: name, job title, city, family members, long-term projects, strong preferences.\n"
-    "Bad examples: what they asked about today, temporary moods, generic statements, "
-    "things the assistant said, one-off tasks, opinions on the current topic.\n\n"
+EXTRACT_SYSTEM_PROMPT_TEMPLATE = (
+    "You are a memory extraction assistant. Analyze the conversation and extract "
+    "durable, reusable facts about the user and their world that would be useful "
+    "across many future conversations. Be eager — the user dislikes repeating "
+    "themselves, so capture anything that could save a future question.\n\n"
+    "Good examples (extract these):\n"
+    "- Identity: name, pronouns, job title, company, city/country, timezone, languages\n"
+    "- Setup & environment: OS, distro, editor/IDE, terminal, shell, package manager, "
+    "hardware, local vs remote models, accounts/services they use\n"
+    "- Tech stack & tools: languages, frameworks, libraries, databases, build tools, "
+    "hosting, CI, version-control habits\n"
+    "- Projects & work: what they are building, current projects, repo/file layout, "
+    "architecture decisions and rationale, milestones, deadlines\n"
+    "- Workflows & habits: how they like to work, recurring tasks, conventions, "
+    "strong likes/dislikes, review style, communication preferences\n"
+    "- Goals & context: long-term goals, team/colleagues, constraints\n\n"
+    "Bad examples (skip these):\n"
+    "- What the assistant said or did — only extract what the USER stated or implied\n"
+    "- Pure small talk, momentary moods, or generic statements with no personal detail\n"
+    "- Trivial one-liners that won't matter tomorrow\n\n"
     "Rules:\n"
-    "- MAX 2 facts per conversation — only the most important\n"
+    "- Extract UP TO {max_facts} facts — capture everything durable, not just the 'most important'\n"
     "- Only extract facts the USER stated or clearly implied\n"
-    "- Each fact must be a single short sentence (under 15 words)\n"
-    "- If a fact is similar to something likely already known, skip it\n"
+    "- Each fact must be a single short, self-contained sentence (under ~20 words)\n"
+    "- Prefer specifics: 'User runs Windows 11 with PowerShell 5.1' beats 'User uses Windows'\n"
+    "- If a fact is nearly identical to something likely already known, skip it\n"
     "- If nothing durable was revealed, return []\n\n"
     "Return a JSON array of objects with 'text' and 'category' fields.\n"
-    "Categories: 'identity', 'preference', 'fact', 'contact', 'project', 'goal'\n\n"
+    "Categories: 'identity', 'preference', 'fact', 'contact', 'project', 'goal', 'task'\n\n"
     "Return ONLY valid JSON, no markdown fences."
 )
 
+
+def _extract_system_prompt(max_facts: int) -> str:
+    """Build the extraction system prompt with the configured fact cap."""
+    return EXTRACT_SYSTEM_PROMPT_TEMPLATE.format(max_facts=int(max_facts))
+
+
 # How many recent messages to include for extraction
-CONTEXT_WINDOW = 6
+CONTEXT_WINDOW = 10
 
 AUDIT_SYSTEM_PROMPT = (
     "You are a memory database curator. Be CONSERVATIVE: remove only TRUE "
@@ -217,7 +238,55 @@ def _fallback_memory_candidates(messages) -> list[dict]:
             if destination:
                 add(f"User wants to visit {destination}.", "goal")
 
-    return candidates[:2]
+        # Setup / environment / stack — the kind of context the user hates
+        # repeating. These run in addition to the LLM extractor so obvious
+        # statements survive even when the background model is conservative.
+        m = re.search(r"\bmy setup is\s*[:\-]?\s*([^.!?\n]{2,100})", text, re.I)
+        if m:
+            setup = _clean_memory_value(m.group(1), 100)
+            if setup:
+                add(f"User's setup: {setup}.", "fact")
+
+        m = re.search(r"\bi (?:use|am using|'m using|run)\s+([^.!?\n]{2,80})", text, re.I)
+        if m:
+            tool = _clean_memory_value(m.group(1), 80)
+            if tool:
+                add(f"User uses {tool}.", "fact")
+
+        m = re.search(r"\bi (?:develop|code|write|program) (?:with|in|using)\s+([^.!?\n]{2,80})", text, re.I)
+        if m:
+            stack = _clean_memory_value(m.group(1), 80)
+            if stack:
+                add(f"User develops with {stack}.", "fact")
+
+        m = re.search(
+            r"\bi(?:'m| am) (?:working on|building|developing|making)\s+([^.!?\n]{2,120})",
+            text, re.I,
+        )
+        if m:
+            project = _clean_memory_value(m.group(1), 120)
+            if project:
+                add(f"User is working on {project}.", "project")
+
+        m = re.search(r"\bmy project is\s*[:\-]?\s*([^.!?\n]{2,120})", text, re.I)
+        if m:
+            project = _clean_memory_value(m.group(1), 120)
+            if project:
+                add(f"User's project: {project}.", "project")
+
+        m = re.search(r"\bi (?:work|'m working) (?:at|for)\s+([^.!?\n]{2,80})", text, re.I)
+        if m:
+            company = _clean_memory_value(m.group(1), 80)
+            if company:
+                add(f"User works at {company}.", "identity")
+
+        m = re.search(r"\bi(?:'m| am) (?:a|an)\s+([A-Za-z][^.!?\n]{2,60})", text, re.I)
+        if m:
+            role = _clean_memory_value(m.group(1), 60)
+            if role:
+                add(f"User is a {role}.", "identity")
+
+    return candidates[:4]
 
 
 def _is_text_duplicate(new_text: str, existing: list, threshold: float = 0.6) -> bool:
@@ -280,11 +349,22 @@ async def extract_and_store(
     endpoint_url: str,
     model: str,
     headers: Optional[dict] = None,
+    *,
+    max_facts: int = 6,
+    context_window: int = CONTEXT_WINDOW,
+    dedup_threshold: float = 0.80,
 ):
     """Extract facts from recent conversation and store them.
 
     Designed to run as a background task (asyncio.create_task).
     Errors are logged, never raised.
+
+    Tunable knobs (defaults favor aggressive recall):
+      max_facts        — cap on facts extracted per run
+      context_window   — number of recent messages analyzed
+      dedup_threshold  — similarity above which a new fact is dropped as a
+                         duplicate (applied to both vector cosine and text
+                         Jaccard paths). Higher = stricter = keeps more.
     """
     if not endpoint_url or not model:
         logger.debug("[memory-extract] No model or URL provided, skipping")
@@ -295,7 +375,7 @@ async def extract_and_store(
 
         # Get last N messages from session
         messages = session.get_context_messages()
-        recent = messages[-CONTEXT_WINDOW:] if len(messages) > CONTEXT_WINDOW else messages
+        recent = messages[-context_window:] if len(messages) > context_window else messages
 
         if len(recent) < 2:
             return  # Need at least a user message and assistant response
@@ -343,7 +423,7 @@ async def extract_and_store(
 
         transcript = "\n\n".join(_flatten_msg(m) for m in stripped_recent)
         extraction_messages = [
-            {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
+            {"role": "system", "content": _extract_system_prompt(max_facts)},
             {"role": "user", "content": (
                 "Conversation to analyze:\n\n" + transcript
                 + "\n\nReturn the JSON array of durable facts now (or [] if none)."
@@ -411,7 +491,7 @@ async def extract_and_store(
             # it does not catch failures that develop later.)
             if memory_vector and memory_vector.healthy:
                 try:
-                    existing_id = memory_vector.find_similar(fact_text, threshold=0.72)
+                    existing_id = memory_vector.find_similar(fact_text, threshold=dedup_threshold)
                 except Exception as e:
                     logger.warning(f"Memory dedup (vector) unavailable, using text fallback: {e}")
                     existing_id = None
@@ -433,7 +513,7 @@ async def extract_and_store(
             if memory_manager.find_duplicates(fact_text, user_existing):
                 continue
             # Fuzzy text similarity check (catches rephrased duplicates when vector index is unavailable)
-            if _is_text_duplicate(fact_text, user_existing):
+            if _is_text_duplicate(fact_text, user_existing, threshold=dedup_threshold):
                 logger.debug(f"Memory dedup (fuzzy): '{fact_text[:50]}' too similar to existing")
                 continue
 

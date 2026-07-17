@@ -190,6 +190,10 @@ async function syncToggles() {
   // injection (see chat_helpers.py: uprefs.skills_enabled).
   await syncPrefToggle('skills-enabled-header-toggle', 'skills_enabled', 'Skills enabled', 'Skills disabled', false);
   await syncPrefToggle('auto-memory-toggle', 'auto_memory', 'Auto-extract memories enabled', 'Auto-extract memories disabled', false);
+  await syncPrefNumber('memory-extract-every-n', 'memory_extract_every_n', 1, 'Extract every N');
+  await syncPrefNumber('memory-extract-max-facts', 'memory_extract_max_facts', 6, 'Max facts');
+  await syncPrefNumber('memory-extract-context-window', 'memory_extract_context_window', 10, 'Messages analyzed');
+  await syncPrefFloatSlider('memory-dedup-slider', 'memory_dedup_threshold', 'memory-dedup-label', 0.80, 'Dedup strictness');
   await syncPrefToggle('auto-skills-toggle', 'auto_skills', 'Auto-extract skills enabled', 'Auto-extract skills disabled', false);
   await syncPrefToggle('auto-approve-skills-toggle', 'auto_approve_skills', 'Auto-approve skills enabled', 'Auto-approve skills disabled', false);
   await syncPrefSlider('skill-confidence-slider', 'skill_min_confidence', 'skill-confidence-label', 0.85);
@@ -285,8 +289,9 @@ async function syncPrefSlider(elementId, prefKey, labelId, defaultVal) {
   }
 }
 
-/** Load/save an integer-valued pref backed by a <input type="number">. */
-async function syncPrefNumber(elementId, prefKey, defaultVal) {
+/** Load/save an integer-valued pref backed by a <input type="number">.
+ *  toastLabel (optional) overrides the skill-specific default toast. */
+async function syncPrefNumber(elementId, prefKey, defaultVal, toastLabel) {
   const input = document.getElementById(elementId);
   if (!input) return;
   const clamp = (raw) => {
@@ -318,7 +323,53 @@ async function syncPrefNumber(elementId, prefKey, defaultVal) {
           body: JSON.stringify({ value: v })
         });
         if (!res.ok) { showError('Failed to save preference'); return; }
-        showToast(v === 0 ? 'No skills injected' : `Max injected skills: ${v}`);
+        showToast(toastLabel ? `${toastLabel}: ${v}` : (v === 0 ? 'No skills injected' : `Max injected skills: ${v}`));
+      } catch (e) {
+        console.error(`Failed to save ${prefKey} pref:`, e);
+        showError('Failed to save preference');
+      }
+    });
+  }
+}
+
+/** Load/save a float-valued pref (e.g. 0.70–0.95) backed by a range slider.
+ *  The raw float is persisted; the label shows it to 2 decimals. */
+async function syncPrefFloatSlider(elementId, prefKey, labelId, defaultVal, toastLabel) {
+  const slider = document.getElementById(elementId);
+  if (!slider) return;
+  const label = labelId ? document.getElementById(labelId) : null;
+  const fmt = (v) => Number(v).toFixed(2);
+  const lo = Number(slider.min), hi = Number(slider.max);
+  const clamp = (raw) => {
+    let v = parseFloat(raw);
+    if (isNaN(v)) v = defaultVal;
+    return Math.max(lo, Math.min(hi, v));
+  };
+  try {
+    const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`);
+    if (res.ok) {
+      const data = await res.json();
+      const v = (data.value === undefined || data.value === null) ? defaultVal : clamp(data.value);
+      slider.value = String(v);
+    }
+  } catch (e) {
+    console.error(`Failed to load ${prefKey} pref:`, e);
+  }
+  if (label) label.textContent = fmt(slider.value);
+  if (!slider.dataset.bound) {
+    slider.dataset.bound = '1';
+    slider.addEventListener('input', () => { if (label) label.textContent = fmt(slider.value); });
+    slider.addEventListener('change', async () => {
+      const v = clamp(slider.value);
+      slider.value = String(v);
+      try {
+        const res = await fetch(`${window.location.origin}/api/prefs/${prefKey}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ value: v })
+        });
+        if (!res.ok) { showError('Failed to save preference'); return; }
+        showToast(`${toastLabel || 'Value'}: ${fmt(v)}`);
       } catch (e) {
         console.error(`Failed to save ${prefKey} pref:`, e);
         showError('Failed to save preference');

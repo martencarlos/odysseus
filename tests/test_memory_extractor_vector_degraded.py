@@ -20,6 +20,7 @@ import tempfile
 import src.llm_core
 import src.event_bus
 from src.memory import MemoryManager
+import services.memory.memory_extractor as _extractor
 from services.memory.memory_extractor import extract_and_store
 
 
@@ -64,6 +65,10 @@ def test_extraction_persists_facts_when_vector_store_fails_at_runtime(monkeypatc
     monkeypatch.setattr(src.llm_core, "llm_call_async", _fake_llm)
     # fire_event touches an async event loop / disk — neutralize it.
     monkeypatch.setattr(src.event_bus, "fire_event", lambda *a, **k: None)
+    # The audit trigger uses a module-global counter that leaks across tests;
+    # reset it so this test doesn't inherit state and run an audit that wipes
+    # the store with id-less LLM output.
+    monkeypatch.setattr(_extractor, "_extractions_since_audit", 0)
 
     with tempfile.TemporaryDirectory() as data_dir:
         mgr = MemoryManager(data_dir)
@@ -98,6 +103,7 @@ def test_healthy_vector_store_still_dedups_normally(monkeypatch):
 
     monkeypatch.setattr(src.llm_core, "llm_call_async", _fake_llm)
     monkeypatch.setattr(src.event_bus, "fire_event", lambda *a, **k: None)
+    monkeypatch.setattr(_extractor, "_extractions_since_audit", 0)
 
     with tempfile.TemporaryDirectory() as data_dir:
         mgr = MemoryManager(data_dir)

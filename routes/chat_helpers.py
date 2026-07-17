@@ -1134,6 +1134,17 @@ async def _run_extraction_jobs_sequentially(session_id: str, jobs: list, max_wai
             logger.warning("[bg-extract] %s extraction job failed for session %s", name, session_id, exc_info=True)
 
 
+def _memory_extraction_due(msg_count: int, every_n) -> bool:
+    """Decide whether auto memory extraction should run this turn.
+
+    Runs every ``every_n`` message pairs (default 1 = every turn) once a
+    minimum of two messages exist. Kept as a pure helper so the trigger
+    math is unit-testable independent of the full post-response pipeline.
+    """
+    n = max(1, int(every_n or 1))
+    return msg_count >= 2 and (msg_count % n == 0)
+
+
 def run_post_response_tasks(
     sess,
     session_manager,
@@ -1172,18 +1183,29 @@ def run_post_response_tasks(
     """
     _extraction_jobs: list = []
 
-    # Memory extraction — only every 4th message pair to avoid excess LLM calls
+    # Memory extraction — runs every Nth message pair (default every turn) so
+    # the agent accumulates setup/workflow context without the user having to
+    # say "remember this". N and the other knobs are user-tunable from the
+    # Memory settings UI (memory_extract_every_n, memory_extract_max_facts,
+    # memory_extract_context_window, memory_dedup_threshold).
     _msg_count = len(sess.history) if hasattr(sess, 'history') else 0
-    _should_extract = (_msg_count >= 4) and (_msg_count % 4 == 0)
+    _extract_every_n = uprefs.get("memory_extract_every_n", 1)
+    _should_extract = _memory_extraction_due(_msg_count, _extract_every_n)
     if allow_background_extraction and not incognito and not compare_mode and _should_extract and uprefs.get("auto_memory", True):
         from services.memory.memory_extractor import extract_and_store
         from src.task_endpoint import resolve_task_endpoint
         t_url, t_model, t_headers = resolve_task_endpoint(
             sess.endpoint_url, sess.model, sess.headers, owner=owner,
         )
+        _mf = uprefs.get("memory_extract_max_facts", 6)
+        _cw = uprefs.get("memory_extract_context_window", 10)
+        _dd = uprefs.get("memory_dedup_threshold", 0.80)
         _extraction_jobs.append(("memory", extract_and_store(
             sess, memory_manager, memory_vector,
             t_url, t_model, t_headers,
+            max_facts=int(_mf) if _mf is not None else 6,
+            context_window=int(_cw) if _cw is not None else 10,
+            dedup_threshold=float(_dd) if _dd is not None else 0.80,
         )))
 
     # Skill extraction from complex agent runs. Only when the user actually

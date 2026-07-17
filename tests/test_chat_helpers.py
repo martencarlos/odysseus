@@ -445,6 +445,34 @@ def test_empty_or_missing_history():
     assert _session_is_research_spinoff(SimpleNamespace()) is False
 
 
+def test_memory_extraction_due_every_turn_default():
+    # Default every_n=1: due on every turn once at least 2 messages exist.
+    due = chat_helpers._memory_extraction_due
+    assert due(0, 1) is False
+    assert due(1, 1) is False
+    assert due(2, 1) is True
+    assert due(3, 1) is True
+
+
+def test_memory_extraction_due_respects_every_n():
+    due = chat_helpers._memory_extraction_due
+    # every_n=4 (the old default) only fires on multiples of 4.
+    assert due(3, 4) is False
+    assert due(4, 4) is True
+    assert due(5, 4) is False
+    assert due(8, 4) is True
+    # Still needs the 2-message minimum even when on the interval.
+    assert due(0, 4) is False
+
+
+def test_memory_extraction_due_clamps_garbage_every_n():
+    due = chat_helpers._memory_extraction_due
+    assert due(4, None) is True      # None -> 1
+    assert due(4, 0) is True         # 0 -> 1
+    assert due(4, "2") is True       # coerced to int, 4 % 2 == 0
+    assert due(3, "2") is False
+
+
 async def _build_context_owner_probe(monkeypatch, request_state):
     captured = {
         "prefs_owner": None,
